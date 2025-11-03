@@ -1,0 +1,22 @@
+{
+  "EmotionCut": {
+    "ja": {
+      "title": "EmotionCut",
+      "subtitle": "感情トリガーで切り抜きが1分で完成"
+    },
+    "en": {
+      "title": "EmotionCut",
+      "subtitle": "Cut your highlights in 1 minute with emotion triggers"
+    }
+  },
+  "TrendHook": {
+    "ja": {
+      "title": "TrendHook",
+      "subtitle": "今、刺さる投稿をAIが提案"
+    },
+    "en": {
+      "title": "TrendHook",
+      "subtitle": "AI suggests posts that hit the trend right now"
+    }
+  }
+}
