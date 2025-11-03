@@ -1,0 +1,60 @@
+# This is the workflow file used to deploy the LP.
+# YAML構文エラーを解消し、正しく動作するよう修正されています。
+
+name: Deploy LP
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'README.md'
+      - '.github/workflows/deploy_lp.yml'
+      - 'lua_filters/relative-path-to-absolute.lua'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout (uses アクション)
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. パス修正とビルド (run コマンド)
+      - name: 'Build HTML with Pandoc and Path Correction'
+        id: build
+        run: |
+          # Pandocと依存関係のインストール
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+          
+          # 絶対パスのルートディレクトリを設定
+          ROOT_PATH="${{ github.workspace }}"
+          
+          # Pandocコマンドの実行
+          pandoc -f markdown -t html5 -s -o index.html README.md \
+            --lua-filter=./lua_filters/relative-path-to-absolute.lua \
+            --metadata root_path="${ROOT_PATH}"
+
+      # 3. Pages設定 (uses アクション)
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      # 4. アーティファクトアップロード (uses アクション)
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './'
+
+      # 5. デプロイ (uses アクション)
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
