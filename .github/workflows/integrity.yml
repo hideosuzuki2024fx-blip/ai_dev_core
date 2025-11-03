@@ -12,11 +12,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up PowerShell
-        uses: actions/setup-pwsh@v2
-
       - name: Run Integrity Check (Code Only)
         shell: pwsh
         run: |
-          Write-Host "🧩 Running Integrity Check (code files only)..."
+          Write-Host '🧩 Running Integrity Check (code files only)...'
           pwsh ops/scripts/check_integrity.ps1
