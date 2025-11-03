@@ -5,49 +5,45 @@
 
 ---
 
+## ⚠️ AI (GPT) 開発者への最重要指示
+このリポジトリで**コード生成・修正・提案**を行うすべてのAIは、
+実行前に必ず以下のポリシーファイルを読み、その内容を厳守すること。
+
+📄 [ops/ai_policy.md](./ops/ai_policy.md)
+
+> 本ポリシーに違反した出力は破棄対象とし、信頼スコアをリセットする。
+
+---
+
 ## 📂 構成概要
-    ai_dev_core/
-    ├─ apps/              # 各APP（EmotionCut, TrendHook等）
-    ├─ packages/          # 共通モジュール（ai-core, ui-kit等）
-    ├─ docs/              # 企画・設計・意思決定
-    │  ├─ ADR/            # 意思決定ログ (Architectural Decision Record)
-    │  └─ product/        # LP, Hero, モック, i18nデータ
-    ├─ ops/               # スクリプト, CI/CD
-    └─ README.md          # 本ファイル
+ai_dev_core/
+├─ apps/              # 各アプリ（EmotionCut, TrendHook等）
+├─ packages/          # 共通モジュール（ai-core, ui-kit等）
+├─ docs/              # 設計・ADR・仕様ドキュメント
+├─ ops/               # スクリプト・CI・AIポリシー
+└─ README.md          # 本ファイル（エントリーポイント）
 
 ---
 
-## 🧩 フェーズ履歴
-| フェーズ | 内容                 | 状態     |
-|---------|----------------------|----------|
-| #0001   | モノレポ構成初期化   | ✅ 完了  |
-| #0002   | LPモック生成         | ✅ 完了  |
-| #0003   | Hero多言語展開       | ✅ 完了  |
-| #0004   | Windows安全基準ADR   | ✅ 完了  |
-| #0005   | A/Bテスト統合準備    | ⏳ 進行中 |
+## 🧪 整合性チェック
+- ローカル検査: pwsh ops/scripts/check_integrity.ps1
+- CI検査: .github/workflows/integrity.yml
+- 検出語句: 中略, 省略, 略, ..., …
 
 ---
 
-## ⚙️ 開発方針
-- 中略・省略禁止：すべてのコードはコピペで動作する完全形を提示
-- Semantic Diff運用：無意味な差分を作らない
-- AI⇄人間分担：AIが自動生成、人間は承認・公開操作のみ
-- 再現性重視：PowerShell／Python単体で即再構築可能
+## 🧭 ブランチ運用
+- main：安定版
+- dev：統合検証
+- feat/*：新機能
+- docs/*：ドキュメント更新
+コミット形式：feat(scope): summary (#phase)
 
 ---
 
 ## 🪶 GPT後継者への引継ぎ方針
-- GPTは /docs/ADR/ADR-0005_project_manifest.md を起点として全情報を継承
-- 「記憶」「方針」「制約」「継続手順」を読み込み、誤出力を防止
-
----
-
-## 🧭 コミット運用
-- main：安定版
-- dev：統合検証
-- feat/*：新機能
-- docs/*：文書更新
-- コミット形式：feat(scope): summary (#phase)
+- /docs/ADR/ADR-0005_project_manifest.md を基点に全情報を継承
+- 「記憶」「方針」「制約」「手順」を逐次読み込み、誤出力を防止
 
 ---
 
@@ -56,4 +52,4 @@ MIT（予定）
 
 ---
 
-最終更新: 2025-11-03 11:25
+最終更新: 2025-11-03 14:15 JST
