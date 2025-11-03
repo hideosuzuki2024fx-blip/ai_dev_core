@@ -1,0 +1,45 @@
+name: Deploy LP Mock
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pandoc
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y pandoc
+- name: Setup Pages
+        uses: actions/configure-pages@v3
+
+      - name: Generate HTML from Markdown
+        run: |
+          mkdir -p public
+          for f in $(find docs/product/mock -name '*.md'); do
+            b=$(basename $f .md)
+            pandoc "$f" -f markdown -t html -s -o "public/${b}.html"
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
