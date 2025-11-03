@@ -20,7 +20,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Pages
+      - name: Install pandoc
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y pandoc
+- name: Setup Pages
         uses: actions/configure-pages@v3
 
       - name: Generate HTML from Markdown
