@@ -1,31 +1,51 @@
-$ErrorActionPreference="Stop"
+$ErrorActionPreference = "Stop"
+
+# ルート解決
 $Root = Resolve-Path "$PSScriptRoot/../../"
-$Targets = Get-ChildItem -Path $Root -Recurse -File -Include *.ps1,*.py,*.yml,*.md
 
-# 「分断語」パターン
-$Patterns = @("中略","省略","略(?!称)","\.\.\.","…")
+# 走査対象
+$Targets = Get-ChildItem -Path $Root -Recurse -File -Include *.ps1,*.py,*.md,*.yml
 
-# 除外（ポリシー/README/自身/ワークフロー等）
-$ExcludeNames = @(
-  "ai_policy.md",
-  "README.md",
-  "check_integrity.ps1",
-  "integrity.yml",
-  "deploy_lp.yml"
-)
+# 除外（パス基準）
+$ExcludePathRegex = @(
+  '\.github[\\/]+workflows[\\/]+',      # CI定義は対象外
+  'ops[\\/]+scripts[\\/]+check_integrity\.ps1$',  # 自己除外
+  'ops[\\/]+ai_policy\.md$',            # 規範本文は例示語を含むため除外
+  'README\.md$'                        # READMEの方針文も除外（必要に応じて外せる）
+) -join '|'
 
-$Viol = @()
-foreach($F in $Targets){
-  if ($ExcludeNames -contains $F.Name) { continue }
-  $C = Get-Content -Raw -Encoding UTF8 -LiteralPath $F.FullName
-  foreach($P in $Patterns){ if($C -match $P){ $Viol += "$($F.FullName)（検出: $P）" } }
+# 検出パターン（分断・省略を疑う語）
+$Patterns = @('中略','省略','略(?!称)','\.\.\.','…')
+
+# コードフェンス/インラインコードを除去して本文のみ検査
+function Strip-Code($s) {
+  if (-not $s) { return $s }
+  # ``` ``` フェンス除去（言語指定あり/なし）
+  $s = [regex]::Replace($s, '(?s)```.*?```', '')
+  # インラインコード `code` 除去
+  $s = [regex]::Replace($s, '(?<!`)`[^`\r\n]+`(?!`)', '')
+  return $s
 }
 
-Write-Host "`n🧩 Integrity check under: $($Root)`n"
-if($Viol.Count -gt 0){
-  Write-Host "❌ 分断・省略コード検出:" -ForegroundColor Red
-  $Viol | ForEach-Object { Write-Host " - $_" }
+Write-Host "`n🧩 Integrity check under: $Root" -ForegroundColor Cyan
+$Violations = @()
+
+foreach ($F in $Targets) {
+  $full = $F.FullName
+  if ($full -match $ExcludePathRegex) { continue }
+  $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $full
+  $body = Strip-Code $raw
+  foreach ($P in $Patterns) {
+    if ($body -match $P) {
+      $Violations += "$full（検出: $P）"
+    }
+  }
+}
+
+if ($Violations.Count -gt 0) {
+  Write-Host "`n❌ 分断・省略コード検出:" -ForegroundColor Red
+  $Violations | ForEach-Object { Write-Host " - $_" }
   exit 1
-}else{
-  Write-Host "✅ 整合性OK（README/ai_policy/自己・CI定義は除外）" -ForegroundColor Green
+} else {
+  Write-Host "`n✅ 整合性OK（AI分断禁止チェック）" -ForegroundColor Green
 }
