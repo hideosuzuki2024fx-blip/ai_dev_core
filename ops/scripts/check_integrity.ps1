@@ -1,8 +1,7 @@
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference="Stop"
 $Root = Resolve-Path "$PSScriptRoot/../../"
 Write-Host "`n🧩 Integrity check under: $Root`n"
 
-# 監視対象はコードのみ（*.ps1, *.py, *.yml）。ドキュメント *.md は許容。
 $Targets = Get-ChildItem -Path $Root -Recurse -File -Include *.ps1,*.py,*.yml |
   Where-Object {
     $_.FullName -notmatch '\\.git\\' -and
@@ -10,10 +9,9 @@ $Targets = Get-ChildItem -Path $Root -Recurse -File -Include *.ps1,*.py,*.yml |
     $_.Name -notin @('check_integrity.ps1','integrity.yml')
   }
 
-# “分断・省略”検出パターン
 $Patterns = @('中略','省略','略(?!称)','\.\.\.','…')
-
 $Violations = @()
+
 foreach ($F in $Targets) {
   $C = Get-Content -Raw -Encoding UTF8 -LiteralPath $F.FullName
   foreach ($P in $Patterns) {
