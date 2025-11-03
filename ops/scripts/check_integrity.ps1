@@ -1,27 +1,33 @@
 # ops/scripts/check_integrity.ps1
-# --- コード完全性・分断防止 自動検証スクリプト ---
+# 分断・省略検出（コメント・コードブロック除外版）
 $ErrorActionPreference = "Stop"
-$root = "$PSScriptRoot/../../"
-Write-Host "`n🧩 Integrity check under: $root" -ForegroundColor Cyan
+$Root = Resolve-Path "$PSScriptRoot/../../"
+$Targets = Get-ChildItem -Path $Root -Recurse -File -Include *.ps1,*.py,*.md,*.yml
+$Patterns = @("中略","省略","略(?!称)","\.\.\.","…")
+$Violations = @()
 
-# 対象ファイル
-$targets = Get-ChildItem -Path $root -Recurse -Include *.ps1,*.py,*.md,*.yml
-$patterns = "ここに本文","省略","中略","略","..."
+foreach ($File in $Targets) {
+    $Content = Get-Content -Raw -Encoding UTF8 -LiteralPath $File.FullName
 
-$violations = @()
-foreach ($f in $targets) {
-    $c = Get-Content -Raw -Encoding UTF8 $f
-    foreach ($p in $patterns) {
-        if ($c -match $p) {
-            $violations += "$($f.FullName)（検出: $p）"
+    # === 除外ロジック追加 ===
+    # コードブロック内 (``` ～ ```) と コメント行 (# で始まる行) を除外
+    $Filtered = $Content -split "`n" | Where-Object {
+        ($_ -notmatch '^\s*#') -and
+        ($_ -notmatch '^\s*```')
+    } | Out-String
+
+    foreach ($Pattern in $Patterns) {
+        if ($Filtered -match $Pattern) {
+            $Violations += "$($File.FullName)（検出: $Pattern）"
         }
     }
 }
 
-if ($violations.Count -gt 0) {
-    Write-Host "`n❌ 分断・省略コード検出:" -ForegroundColor Red
-    $violations | ForEach-Object { Write-Host " - $_" }
+if ($Violations.Count -gt 0) {
+    Write-Host "`n🧩 Integrity check under: $Root`n" -ForegroundColor Yellow
+    Write-Host "❌ 分断・省略コード検出:" -ForegroundColor Red
+    $Violations | ForEach-Object { Write-Host " - $_" }
     exit 1
 } else {
-    Write-Host "`n✅ 全ファイル整合性チェック完了。分断・省略なし。" -ForegroundColor Green
+    Write-Host "`n✅ 整合性OK — 分断なし" -ForegroundColor Green
 }
