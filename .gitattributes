@@ -1,0 +1,4 @@
+# normalize endings for CI-critical files
+*.yml text eol=lf
+*.yaml text eol=lf
+ops/scripts/*.ps1 text eol=lf

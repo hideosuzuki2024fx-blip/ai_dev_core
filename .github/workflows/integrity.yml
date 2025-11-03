@@ -1,5 +1,4 @@
 name: Integrity Check
-
 on:
   push:
   pull_request:
@@ -11,5 +10,4 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run Code Integrity Verification
         shell: pwsh
-        run: |
-          pwsh ops/scripts/check_integrity.ps1
+        run: pwsh ops/scripts/check_integrity.ps1
