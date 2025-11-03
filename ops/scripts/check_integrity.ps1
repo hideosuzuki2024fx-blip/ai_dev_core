@@ -1,33 +1,40 @@
 # ops/scripts/check_integrity.ps1
-# 分断・省略検出（コメント・コードブロック除外版）
+# コードのみ分断検査（Markdownは対象外） / UTF-8 No BOM
 $ErrorActionPreference = "Stop"
-$Root = Resolve-Path "$PSScriptRoot/../../"
-$Targets = Get-ChildItem -Path $Root -Recurse -File -Include *.ps1,*.py,*.md,*.yml
-$Patterns = @("中略","省略","略(?!称)","\.\.\.","…")
-$Violations = @()
 
-foreach ($File in $Targets) {
-    $Content = Get-Content -Raw -Encoding UTF8 -LiteralPath $File.FullName
+$Root   = Resolve-Path "$PSScriptRoot/../../"
+$Globs  = @("*.ps1","*.psm1","*.psd1","*.py","*.ts","*.tsx","*.js","*.jsx","*.json","*.yml","*.yaml","*.sh","*.bat","*.cmd","*.cs","*.go","*.rs","*.java","*.c","*.cpp")
 
-    # === 除外ロジック追加 ===
-    # コードブロック内 (``` ～ ```) と コメント行 (# で始まる行) を除外
-    $Filtered = $Content -split "`n" | Where-Object {
-        ($_ -notmatch '^\s*#') -and
-        ($_ -notmatch '^\s*```')
-    } | Out-String
+# 分断検出パターン（コードで使うべきでない表現）
+$Patterns = @(
+  "中略",
+  "省略",
+  "略(?!称)",   # 「略称」は許可
+  "\.\.\.",     # ドット3個
+  "…"
+)
 
-    foreach ($Pattern in $Patterns) {
-        if ($Filtered -match $Pattern) {
-            $Violations += "$($File.FullName)（検出: $Pattern）"
-        }
-    }
+$Files = @()
+foreach($g in $Globs){
+  $Files += Get-ChildItem -Path $Root -Recurse -File -Include $g -ErrorAction SilentlyContinue
 }
 
-if ($Violations.Count -gt 0) {
-    Write-Host "`n🧩 Integrity check under: $Root`n" -ForegroundColor Yellow
-    Write-Host "❌ 分断・省略コード検出:" -ForegroundColor Red
-    $Violations | ForEach-Object { Write-Host " - $_" }
-    exit 1
-} else {
-    Write-Host "`n✅ 整合性OK — 分断なし" -ForegroundColor Green
+$Viol = @()
+foreach($F in $Files){
+  $Txt = Get-Content -Raw -Encoding UTF8 -LiteralPath $F.FullName
+
+  foreach($P in $Patterns){
+    if($Txt -match $P){
+      $Viol += "$($F.FullName)（検出: $P）"
+    }
+  }
+}
+
+Write-Host "`n🧩 Integrity check under: $Root`n" -ForegroundColor Yellow
+if($Viol.Count -gt 0){
+  Write-Host "❌ 分断・省略コード検出:" -ForegroundColor Red
+  $Viol | ForEach-Object { Write-Host " - $_" }
+  exit 1
+}else{
+  Write-Host "✅ 整合性OK — コードに分断なし" -ForegroundColor Green
 }
