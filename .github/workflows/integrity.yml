@@ -6,10 +6,17 @@ on:
 
 jobs:
   verify:
+    name: Code Integrity Verification
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Run Integrity Check
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PowerShell
+        uses: actions/setup-pwsh@v2
+
+      - name: Run Integrity Check (Code Only)
         shell: pwsh
-        continue-on-error: true
-        run: pwsh ops/scripts/check_integrity.ps1
+        run: |
+          Write-Host "🧩 Running Integrity Check (code files only)..."
+          pwsh ops/scripts/check_integrity.ps1
