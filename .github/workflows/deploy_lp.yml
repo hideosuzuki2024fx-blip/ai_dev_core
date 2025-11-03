@@ -26,17 +26,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pandoc
 
-      - name: Generate HTML from Markdown
+            - name: Generate HTML from Markdown
         run: |
           set -e
           mkdir -p public
-          if [ -f docs/product/LP_EmotionCut.md ]; then SRC=docs/product/LP_EmotionCut.md; \
-          elif [ -f README.md ]; then SRC=README.md; \
-          elif [ -f START_HERE.md ]; then SRC=START_HERE.md; \
-          else echo "<!doctype html><meta charset='utf-8'><title>ai_dev_core</title><h1>ai_dev_core</h1><p>No markdown found.</p>" > public/index.html; exit 0; fi
+
+          if [ -f docs/product/LP_EmotionCut.md ]; then
+              SRC="docs/product/LP_EmotionCut.md"
+          elif [ -f README.md ]; then
+              SRC="README.md"
+          elif [ -f START_HERE.md ]; then
+              SRC="START_HERE.md"
+          else
+              echo "<!doctype html><meta charset='utf-8'><title>ai_dev_core</title><h1>ai_dev_core</h1><p>No markdown found.</p>" > public/index.html
+              exit 0
+          fi
+
           pandoc "" -s -o public/index.html
 
-      - name: Setup Pages
+
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
