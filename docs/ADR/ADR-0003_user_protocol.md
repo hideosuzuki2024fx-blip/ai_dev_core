@@ -44,7 +44,7 @@ docs_path = repo_root / "docs" / "ADR"
 docs_path.mkdir(parents=True, exist_ok=True)
 
 content = '''# ADR-0003: ユーザーとAIの分担方針
-...（本文省略）...
+など、必要な情報をすべて含める。（本文省略）など、必要な情報をすべて含める。
 '''
 (docs_path / "ADR-0003_user_protocol.md").write_text(content, encoding="utf-8")
 \\\
