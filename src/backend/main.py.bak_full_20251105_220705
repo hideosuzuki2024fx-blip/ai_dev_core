@@ -1,0 +1,145 @@
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import FileResponse, JSONResponse
+from pathlib import Path
+from weasyprint import HTML
+import csv, base64, os, io
+
+ROOT = Path.home() / "Projects" / "ai_dev_core"
+BACKEND = ROOT / "src" / "backend"
+STATIC = ROOT / "src" / "static"
+OUTPUTS = ROOT / "outputs"
+
+OUTPUTS.mkdir(parents=True, exist_ok=True)
+STATIC.mkdir(parents=True, exist_ok=True)
+
+app = FastAPI(title="Photobook CSV→PDF")
+
+# CORS（ローカル用途）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
+)
+
+# 静的配信（/static は index.html など）
+app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+# 生成物配信（/files から PDF を直表示）
+app.mount("/files", StaticFiles(directory=str(OUTPUTS)), name="files")
+
+@app.get("/", response_class=FileResponse)
+def _root():
+    return FileResponse(STATIC / "index.html", media_type="text/html")
+
+@app.get("/list_csv")
+def list_csv():
+    items = sorted([p.name for p in OUTPUTS.glob("*.csv")])
+    return {"ok": True, "items": items}
+
+@app.post("/csv")
+async def create_csv(
+    title: str = Form(...),
+    captions: str = Form(""),
+):
+    # UTF-8 CSVを outputs に保存
+    safe = "".join(c if c not in "\\/:*?\"<>|" else "_" for c in title).strip() or "captions"
+    name = f"{safe}_{__import__('datetime').datetime.now():%Y%m%d_%H%M%S}.csv"
+    path = OUTPUTS / name
+
+    rows = []
+    for line in captions.splitlines():
+        if "," in line:
+            k, v = line.split(",", 1)
+            rows.append([k.strip(), v.strip()])
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["caption", "text"])
+        w.writerows(rows)
+
+    return {"ok": True, "filename": name}
+
+@app.post("/pdf")
+async def create_pdf(
+    title: str = Form(...),
+    csv_name: str = Form(""),               # 保存済みCSV名（/list_csv の items から）
+    csvfile: UploadFile | None = None,      # もしくはCSVファイルを直接アップロード
+    files: list[UploadFile] | None = File(None)  # 画像複数
+):
+    # 1) CSVロード（保存名 or アップロード）
+    if csv_name:
+        csv_path = OUTPUTS / csv_name
+        if not csv_path.exists():
+            return JSONResponse({"ok": False, "error": "CSV not found"}, status_code=400)
+        csv_bytes = csv_path.read_bytes()
+    elif csvfile is not None:
+        csv_bytes = await csvfile.read()
+    else:
+        return JSONResponse({"ok": False, "error": "CSV is required"}, status_code=400)
+
+    lines = csv_bytes.decode("utf-8", errors="ignore").splitlines()
+    reader = csv.DictReader(lines)
+    rows = list(reader)  # [{'caption':..., 'text':...}, ...]
+
+    # 2) 画像（Base64化してHTMLに直埋め込み）
+    b64_images = []
+    if files:
+        for up in files:
+            content = await up.read()
+            # 拡張子からMIME推定（雑に）
+            ext = (Path(up.filename).suffix or "").lower()
+            mime = "image/png" if ext in [".png"] else "image/jpeg"
+            b64 = base64.b64encode(content).decode("ascii")
+            b64_images.append(f"data:{mime};base64,{b64}")
+
+    # 3) HTML生成（表紙1ページ + 以降1行=1ページ：画像→キャプションの縦並び）
+    def esc(s: str) -> str:
+        return (s or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+
+    cover = f"""
+    <section style="page-break-after:always;display:flex;align-items:center;justify-content:center;height:100vh;">
+      <div style="text-align:center;font-family:sans-serif;">
+        <h1 style="font-size:56px;margin:0 0 12px 0;">{esc(title)}</h1>
+        <div style="color:#666;">Photobook</div>
+      </div>
+    </section>
+    """
+
+    pages = []
+    for i, row in enumerate(rows):
+        caption = esc(row.get("caption",""))
+        text    = esc(row.get("text",""))
+        img_src = b64_images[i] if i < len(b64_images) else ""
+        img_html = f"<img src='{img_src}' style='max-width:100%;height:auto;display:block;margin:0 auto 16px auto;border-radius:8px;' />" if img_src else ""
+        page = f"""
+        <section style="page-break-after:always;padding:40px 48px;font-family:sans-serif;">
+          {img_html}
+          <div style="font-weight:600;font-size:20px;margin:6px 0 4px 0;">{caption}</div>
+          <div style="color:#555;line-height:1.5;">{text}</div>
+        </section>
+        """
+        pages.append(page)
+
+    html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{esc(title)}</title></head><body>{cover}{''.join(pages)}</body></html>"
+
+    # 4) PDF出力
+    pdf_name = "".join(c if c not in "\\/:*?\"<>|" else "_" for c in title).strip() or "photobook"
+    pdf_name = f"{pdf_name}.pdf"
+    pdf_path = OUTPUTS / pdf_name
+    HTML(string=html, base_url=str(OUTPUTS)).write_pdf(str(pdf_path))
+
+    # 5) プレビューへ
+    return RedirectResponse(url=f"/preview?file={pdf_name}", status_code=303)
+
+@app.get("/preview", response_class=HTMLResponse)
+def preview(file: str):
+    # /files/{file} を iframe でそのまま表示（PDF.js不要・ローカルで安定）
+    safe = file.replace("\\","/").replace("..","")
+    url  = f"/files/{safe}"
+    return HTMLResponse(f"""
+    <!doctype html><html><head><meta charset="utf-8"><title>Preview - {safe}</title>
+    <style>html,body,iframe{{height:100%;margin:0;border:0;width:100%}}</style></head>
+    <body><iframe src="{url}"></iframe></body></html>
+    """)

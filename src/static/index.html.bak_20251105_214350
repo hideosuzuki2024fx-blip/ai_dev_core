@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>CSV→PDF Photobook</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-4xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4">📘 Photobook CSV → PDF</h1>
+
+    <!-- CSV 生成 -->
+    <section class="bg-white p-4 rounded-xl shadow mb-6">
+      <h2 class="font-semibold mb-2">1) CSVを生成して保存</h2>
+      <form id="csvForm" class="space-y-2">
+        <input name="title" required placeholder="CSVタイトル" class="w-full border rounded px-3 py-2">
+        <textarea name="captions" rows="5" class="w-full border rounded px-3 py-2"
+          placeholder="caption,text&#10;Morning Light,Sunrise over the coast.&#10;Evening Calm,Soft orange reflections on the sea."></textarea>
+        <button class="bg-emerald-600 text-white px-4 py-2 rounded">CSV生成</button>
+      </form>
+      <div id="csvMsg" class="text-sm text-gray-600 mt-2"></div>
+    </section>
+
+    <!-- PDF 生成 -->
+    <section class="bg-white p-4 rounded-xl shadow">
+      <h2 class="font-semibold mb-2">2) CSV と 画像を指定して PDF 生成</h2>
+
+      <div class="flex gap-4 items-center mb-2">
+        <label class="flex items-center gap-2">
+          <input type="radio" name="csvmode" value="existing" checked>
+          既存CSVを使う
+        </label>
+        <label class="flex items-center gap-2">
+          <input type="radio" name="csvmode" value="upload">
+          CSVファイルをアップロード
+        </label>
+      </div>
+
+      <div id="csvExisting" class="mb-3">
+        <select id="csvSelect" class="border rounded px-3 py-2 w-full"></select>
+        <div class="text-xs text-gray-500 mt-1">上のプルダウンは outputs 内のCSV一覧です。</div>
+      </div>
+
+      <div id="csvUpload" class="mb-3 hidden">
+        <input id="csvFile" type="file" accept=".csv" class="border rounded p-2 w-full">
+      </div>
+
+      <form id="pdfForm" class="space-y-2">
+        <input name="title" required placeholder="PDFタイトル" class="w-full border rounded px-3 py-2">
+        <input id="imgFiles" type="file" accept="image/*" multiple class="w-full border rounded p-2">
+        <button class="bg-blue-600 text-white px-4 py-2 rounded">PDF生成</button>
+      </form>
+
+      <div id="pdfMsg" class="text-sm text-gray-600 mt-2"></div>
+    </section>
+  </div>
+
+<script>
+const csvMsg = document.getElementById('csvMsg');
+const pdfMsg = document.getElementById('pdfMsg');
+const csvSelect = document.getElementById('csvSelect');
+const csvFile = document.getElementById('csvFile');
+const csvExisting = document.getElementById('csvExisting');
+const csvUpload = document.getElementById('csvUpload');
+
+function refreshCsvList() {
+  fetch('/list_csv').then(r => r.json()).then(j => {
+    csvSelect.innerHTML = '';
+    if (!j.ok) { csvSelect.innerHTML = '<option value="">(取得失敗)</option>'; return; }
+    if (j.items.length === 0) { csvSelect.innerHTML = '<option value="">(CSVなし)</option>'; return; }
+    for (const it of j.items) {
+      const o = document.createElement('option');
+      o.value = it.name;
+      o.textContent = `${it.name} (${it.size} bytes)`;
+      csvSelect.appendChild(o);
+    }
+  }).catch(e => { csvSelect.innerHTML = '<option value="">(取得エラー)</option>'; });
+}
+
+document.getElementById('csvForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  csvMsg.textContent = '生成中...';
+  const fd = new FormData(e.target);
+  const r = await fetch('/csv', { method: 'POST', body: fd });
+  const j = await r.json();
+  csvMsg.textContent = j.ok ? `保存: ${j.filename}` : '失敗';
+  if (j.ok) refreshCsvList();
+});
+
+for (const el of document.querySelectorAll('input[name="csvmode"]')) {
+  el.addEventListener('change', () => {
+    const useExisting = document.querySelector('input[name="csvmode"]:checked').value === 'existing';
+    csvExisting.classList.toggle('hidden', !useExisting);
+    csvUpload.classList.toggle('hidden', useExisting);
+  });
+}
+
+document.getElementById('pdfForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  pdfMsg.textContent = '生成中...';
+  const fd = new FormData();
+  const title = e.target.querySelector('input[name="title"]').value;
+  fd.append('title', title);
+
+  const useExisting = document.querySelector('input[name="csvmode"]:checked').value === 'existing';
+  if (useExisting) {
+    if (!csvSelect.value) { pdfMsg.textContent = 'CSV未選択'; return; }
+    fd.append('csvname', csvSelect.value);
+  } else {
+    if (!csvFile.files.length) { pdfMsg.textContent = 'CSV未選択'; return; }
+    fd.append('csvfile', csvFile.files[0]);
+  }
+
+  const imgs = document.getElementById('imgFiles').files;
+  if (!imgs.length) { pdfMsg.textContent = '画像未選択'; return; }
+  for (const f of imgs) fd.append('files', f);
+
+  const r = await fetch('/pdf', { method: 'POST', body: fd });
+  const j = await r.json().catch(async () => ({ ok:false, raw: await r.text() }));
+  if (j.ok && j.preview) {
+    pdfMsg.innerHTML = `✅ <a class="text-blue-600 underline" href="${j.preview}" target="_blank">PDFを開く</a>`;
+    window.open(j.preview, '_blank');
+  } else {
+    pdfMsg.textContent = `失敗: ${j.error || j.raw || r.status}`;
+  }
+});
+
+refreshCsvList();
+</script>
+</body>
+</html>

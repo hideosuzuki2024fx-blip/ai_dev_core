@@ -1,0 +1,21 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\MaoGon\\Projects\\ai_dev_core\\src\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [9800] using WatchFiles
+INFO:     Started server process [19988]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:50546 - "GET /static/index.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53879 - "GET /static/index.html HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53877 - "POST /csv HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53877 - "GET /list_csv HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50374 - "GET /static/index.html HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50374 - "GET /list_csv HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59220 - "POST /csv HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59220 - "GET /list_csv HTTP/1.1" 200 OK
+C:\Users\MaoGon\AppData\Local\Programs\Python\Python310\lib\site-packages\weasyprint\pdf\stream.py:153: UserWarning: 'instantiateVariableFont' is deprecated; use fontTools.varLib.instancer.instantiateVariableFont instead for either full or partial instancing
+  ttfont = instantiateVariableFont(self.ttfont, variations)
+INFO:     127.0.0.1:61521 - "POST /pdf HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:61521 - "GET /preview?file=123.pdf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57964 - "GET /preview?file=123.pdf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49926 - "GET /preview?file=123.pdf HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'main.py'. Reloading...

@@ -1,0 +1,85 @@
+from fastapi import FastAPI, Form, UploadFile, File
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from jinja2 import Environment, FileSystemLoader
+from weasyprint import HTML
+import tempfile, base64, os, json
+
+app = FastAPI()
+
+base_dir = os.path.dirname(__file__)
+templates_dir = os.path.join(base_dir, "templates")
+outputs_dir = os.path.abspath(os.path.join(base_dir, "..", "..", "outputs"))
+os.makedirs(outputs_dir, exist_ok=True)
+
+env = Environment(loader=FileSystemLoader(templates_dir))
+
+@app.post("/pdf")
+async def generate_photobook(
+    title: str = Form(...),
+    captions: str = Form(...),
+    images: list[UploadFile] = File(None),
+    theme: str = Form("classic")
+):
+    data = json.loads(captions)
+    pages = []
+    image_paths = []
+
+    # 画像を一時保存
+    for i, item in enumerate(data):
+        img_b64 = None
+        if images and i < len(images):
+            img_bytes = await images[i].read()
+            img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+            temp_path = os.path.join(outputs_dir, f"temp_img_{i}.png")
+            with open(temp_path, "wb") as f:
+                f.write(img_bytes)
+            image_paths.append(temp_path)
+        pages.append({
+            "caption": item.get("caption", f"Page {i+1}"),
+            "text": item.get("text", ""),
+            "image_base64": img_b64
+        })
+
+    # HTML生成
+    template = env.get_template("photobook.html")
+    html_content = template.render(title=title, pages=pages, theme=theme)
+
+    # デバッグHTML出力
+    debug_html = os.path.join(outputs_dir, "debug_photobook.html")
+    with open(debug_html, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    print(f"[DEBUG] HTML exported: {debug_html}")
+
+    # PDF生成
+    pdf_path = os.path.join(outputs_dir, f"photobook_{theme}.pdf")
+    print(f"[PDF] Generating file: {pdf_path}")
+    HTML(string=html_content, base_url=base_dir, encoding="utf-8").write_pdf(pdf_path)
+    print(f"[PDF] Done: {pdf_path}")
+
+    return RedirectResponse(url=f"/preview?file=photobook_{theme}.pdf", status_code=303)
+
+@app.get("/preview")
+async def preview(file: str):
+    filepath = os.path.join(outputs_dir, file)
+    if not os.path.exists(filepath):
+        return HTMLResponse("<h2>❌ PDF not found.</h2>")
+
+    safe_path = filepath.replace("\\", "/")
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset='utf-8'>
+        <title>PDF Preview - {file}</title>
+        <style>
+            html, body {{ height: 100%; margin: 0; padding: 0; }}
+            iframe {{ width: 100%; height: 100%; border: none; }}
+        </style>
+    </head>
+    <body>
+        <iframe src='/static/pdfjs/web/viewer.html?file=file:///{safe_path}'></iframe>
+    </body>
+    </html>
+    """
+    return HTMLResponse(html)

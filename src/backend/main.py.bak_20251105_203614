@@ -1,0 +1,152 @@
+from fastapi import FastAPI, Form, UploadFile, File
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from typing import List
+import os, csv, base64, datetime, html, re
+from weasyprint import HTML
+
+app = FastAPI()
+
+BASE_DIR   = os.path.dirname(__file__)
+ROOT_DIR   = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+OUTPUT_DIR = os.path.join(ROOT_DIR, "outputs")
+
+os.makedirs(STATIC_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+def safe_filename(name: str) -> str:
+    name = re.sub(r"[\\/:*?\"<>|]+", "_", name)
+    return name.strip() or "untitled"
+
+@app.get("/")
+def root():
+    # UI を配信
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return HTMLResponse(open(index_path, "r", encoding="utf-8").read())
+    return HTMLResponse("<h3>index.html not found</h3>", status_code=404)
+
+@app.post("/csv")
+async def create_csv(title: str = Form(...), captions: str = Form(...)):
+    """
+    captions: フォームのテキストエリア（1行: caption,text）
+    保存先: /outputs/<title>_YYYYmmdd_HHMMSS.csv
+    """
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    fname = f"{safe_filename(title)}_{ts}.csv"
+    fpath = os.path.join(OUTPUT_DIR, fname)
+
+    with open(fpath, "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["caption", "text"])
+        for line in captions.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # 最初のカンマで2分割（caption, text）
+            cap, txt = (line.split(",", 1) + [""])[:2]
+            w.writerow([cap.strip(), txt.strip()])
+
+    return {"filename": fname}
+
+@app.get("/list_csv")
+def list_csv():
+    files = [f for f in os.listdir(OUTPUT_DIR) if f.lower().endswith(".csv")]
+    files.sort(reverse=True)
+    return {"files": files}
+
+@app.post("/pdf")
+async def make_pdf(
+    title: str = Form(...),
+    csvname: str = Form(...),                 # /outputs 配下のCSVファイル名
+    files: List[UploadFile] = File(...)       # 複数画像（順番にページへ）
+):
+    csv_path = os.path.join(OUTPUT_DIR, os.path.basename(csvname))
+    if not os.path.exists(csv_path):
+        return JSONResponse({"error": "CSV not found"}, status_code=400)
+
+    # CSV 読み込み
+    rows = []
+    with open(csv_path, encoding="utf-8") as f:
+        r = csv.DictReader(f)
+        for row in r:
+            rows.append({
+                "caption": row.get("caption", "") or "",
+                "text": row.get("text", "") or ""
+            })
+
+    # 画像とページ構築（不足分はテキストのみページ）
+    pages = []
+    for i, row in enumerate(rows):
+        img_data_uri = None
+        if files and i < len(files) and files[i] is not None:
+            data = await files[i].read()
+            ctype = files[i].content_type or "image/jpeg"
+            img_data_uri = "data:%s;base64,%s" % (ctype, base64.b64encode(data).decode("ascii"))
+
+        pages.append({
+            "caption": row["caption"],
+            "text": row["text"],
+            "img": img_data_uri
+        })
+
+    # HTML を組み立て（画像は DataURI で埋め込み → 相対パス問題を回避）
+    esc = html.escape
+    parts = []
+    parts.append("""
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: A4; margin: 18mm; }
+    body { font-family: sans-serif; color: #222; }
+    h1 { font-size: 26px; margin: 0 0 12px 0; }
+    .page { page-break-after: always; }
+    .ph { font-size: 20px; margin: 8px 0 6px 0; }
+    .tx { font-size: 12.5px; color: #555; margin: 0 0 8px 0; }
+    .img { max-width: 100%; height: auto; border: 1px solid #ddd; margin: 6px 0 8px 0; }
+  </style>
+</head>
+<body>
+""")
+    parts.append(f"<h1>{esc(title)}</h1>")
+
+    for p in pages:
+        parts.append("<div class='page'>")
+        if p["img"]:
+            parts.append(f"<img class='img' src='{p['img']}' />")
+        parts.append(f"<div class='ph'>{esc(p['caption'])}</div>")
+        parts.append(f"<div class='tx'>{esc(p['text'])}</div>")
+        parts.append("</div>")
+
+    parts.append("</body></html>")
+    html_content = "".join(parts)
+
+    # PDF 出力
+    pdf_name = f"{safe_filename(title)}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    pdf_path = os.path.join(OUTPUT_DIR, pdf_name)
+    HTML(string=html_content, base_url=BASE_DIR, encoding="utf-8").write_pdf(pdf_path)
+
+    # プレビューへリダイレクト
+    return RedirectResponse(url=f"/preview?file={pdf_name}", status_code=303)
+
+@app.get("/download")
+def download(file: str):
+    pdf_path = os.path.join(OUTPUT_DIR, os.path.basename(file))
+    if not os.path.exists(pdf_path):
+        return HTMLResponse("Not found", status_code=404)
+    return FileResponse(pdf_path, media_type="application/pdf", filename=os.path.basename(pdf_path))
+
+@app.get("/preview")
+def preview(file: str):
+    # シンプルな埋め込みビュー
+    f = os.path.basename(file)
+    return HTMLResponse(f"""<!doctype html>
+<html><head><meta charset='utf-8'>
+<title>{html.escape(f)}</title>
+<style>html,body,embed{{height:100%;width:100%;margin:0}}</style></head>
+<body><embed src="/download?file={html.escape(f)}" type="application/pdf"></body></html>""")

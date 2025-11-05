@@ -1,0 +1,97 @@
+from fastapi import FastAPI, UploadFile, Form
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+import csv
+from weasyprint import HTML
+
+ROOT = Path.home() / "Projects" / "ai_dev_core"
+OUTPUTS = ROOT / "outputs"
+STATIC = ROOT / "src" / "static"
+
+OUTPUTS.mkdir(parents=True, exist_ok=True)
+
+app = FastAPI()
+app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+app.mount("/files", StaticFiles(directory=str(OUTPUTS)), name="files")
+
+@app.post("/csv")
+async def create_csv(title: str = Form(...), captions: str = Form("")):
+    filename = f"{title.replace(' ', '_')}.csv"
+    csv_path = OUTPUTS / filename
+
+    rows = []
+    for line in captions.splitlines():
+        if "," in line:
+            k, v = line.split(",", 1)
+            rows.append([k.strip(), v.strip()])
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["caption", "text"])
+        writer.writerows(rows)
+
+    return {"ok": True, "filename": filename}
+
+@app.get("/list_csv")
+async def list_csv():
+    items = [f.name for f in OUTPUTS.glob("*.csv")]
+    return {"ok": True, "items": items}
+
+@app.post("/pdf")
+async def create_pdf(
+    title: str = Form(...),
+    csv_name: str = Form(...),
+    files: list[UploadFile] = None
+):
+    csv_path = OUTPUTS / csv_name
+    if not csv_path.exists():
+        return JSONResponse({"ok": False, "error": "CSVが存在しません"}, status_code=400)
+
+    if not files:
+        return JSONResponse({"ok": False, "error": "画像がありません"}, status_code=400)
+
+    captions = []
+    with open(csv_path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            captions.append(row["caption"].strip())
+
+    img_paths = []
+    for img in files:
+        out = OUTPUTS / img.filename
+        out.write_bytes(await img.read())
+        img_paths.append(out)
+
+    html_parts = []
+
+    # 表紙
+    html_parts.append(f"""
+    <div style="page-break-after: always; text-align:center;">
+      <h1 style="font-size:48px; margin-top:200px;">{title}</h1>
+    </div>
+    """)
+
+    # 本文（画像 + キャプション）
+    for idx, p in enumerate(img_paths):
+        cap = captions[idx] if idx < len(captions) else ""
+        html_parts.append(f"""
+        <div style="page-break-after: always;">
+          <img src="{p.as_posix()}" style="width:100%; margin-bottom:20px;">
+          <h2 style="font-size:24px; text-align:center;">{cap}</h2>
+        </div>
+        """)
+
+    html = f"<html><body>{''.join(html_parts)}</body></html>"
+
+    pdf_name = f"{title.replace(' ', '_')}.pdf"
+    pdf_path = OUTPUTS / pdf_name
+    HTML(string=html).write_pdf(str(pdf_path))
+
+    return RedirectResponse(url=f"/preview?file={pdf_name}", status_code=303)
+
+@app.get("/preview")
+async def preview(file: str):
+    pdf_path = OUTPUTS / file
+    return FileResponse(pdf_path, media_type="application/pdf")
+

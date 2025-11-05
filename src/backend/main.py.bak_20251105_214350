@@ -1,0 +1,146 @@
+from fastapi import FastAPI, UploadFile, Form, File
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from weasyprint import HTML
+import csv
+
+ROOT     = Path.home() / "Projects" / "ai_dev_core"
+OUTPUTS  = ROOT / "outputs"
+STATIC   = ROOT / "src" / "static"
+OUTPUTS.mkdir(parents=True, exist_ok=True)
+STATIC.mkdir(parents=True, exist_ok=True)
+
+app = FastAPI()
+app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+
+@app.get("/")
+def root():
+    index = STATIC / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return JSONResponse({"ok": False, "error": "static/index.html missing"}, status_code=500)
+
+@app.get("/list_csv")
+def list_csv():
+    items = []
+    for p in sorted(OUTPUTS.glob("*.csv"), key=lambda x: x.stat().st_mtime, reverse=True):
+        st = p.stat()
+        items.append({"name": p.name, "size": st.st_size, "mtime": int(st.st_mtime)})
+    return {"ok": True, "items": items}
+
+@app.post("/csv")
+async def create_csv(title: str = Form(...), captions: str = Form("")):
+    # Windows 禁止文字を置換
+    safe = "".join([c if c not in r'\/:*?"<>|' else "_" for c in (title or "")]).strip() or "untitled"
+    csv_path = OUTPUTS / f"{safe}.csv"
+
+    rows = []
+    for line in captions.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        cap, txt = (line.split(",", 1) + [""])[:2]
+        rows.append([cap.strip(), txt.strip()])
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["caption", "text"])
+        w.writerows(rows)
+
+    print(f"[CSV] saved: {csv_path} size={csv_path.stat().st_size}")
+    return {"ok": True, "filename": csv_path.name}
+
+def _read_csv_rows(path: Path):
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        r = csv.DictReader(f)
+        out = []
+        for row in r:
+            out.append({
+                "caption": (row.get("caption") or "").strip(),
+                "text": (row.get("text") or "").strip(),
+            })
+        return out
+
+@app.post("/pdf")
+async def create_pdf(
+    title: str = Form(...),
+    # 既存CSV名 or CSVファイルのどちらか（両対応）
+    csvname: str = Form(None),
+    csvfile: UploadFile = File(None),
+    # 画像は複数
+    files: list[UploadFile] = File(None)
+):
+    if files is None or len(files) == 0:
+        return JSONResponse({"ok": False, "error": "画像が必要です (files)"},
+                            status_code=400)
+
+    # CSVの決定
+    csv_path: Path | None = None
+    if csvfile is not None:
+        csv_path = OUTPUTS / (csvfile.filename or "captions.csv")
+        csv_path.write_bytes(await csvfile.read())
+        print(f"[PDF] csv uploaded: {csv_path} size={csv_path.stat().st_size}")
+    elif csvname:
+        candidate = OUTPUTS / csvname
+        if not candidate.exists():
+            return JSONResponse({"ok": False, "error": f"CSVが見つかりません: {csvname}"},
+                                status_code=400)
+        csv_path = candidate
+        print(f"[PDF] csv selected: {csv_path} size={csv_path.stat().st_size}")
+    else:
+        return JSONResponse({"ok": False, "error": "CSVが指定されていません (csvname/csvfile)"},
+                            status_code=400)
+
+    # CSV 読み込み
+    rows = _read_csv_rows(csv_path)
+
+    # 画像保存（outputsに保存し、相対パス参照）
+    img_names: list[str] = []
+    for up in files:
+        out = OUTPUTS / (up.filename or "image.jpg")
+        out.write_bytes(await up.read())
+        img_names.append(out.name)
+        print(f"[PDF] image saved: {out} size={out.stat().st_size}")
+
+    # HTML 構築（1ページ=画像+キャプション）
+    n = max(len(rows), len(img_names))
+    page_blocks = []
+    for i in range(n):
+        cap = rows[i]["caption"] if i < len(rows) else ""
+        txt = rows[i]["text"]    if i < len(rows) else ""
+        img = img_names[i]       if i < len(img_names) else None
+        img_tag = f"<img src='{img}' style='width:100%; display:block; margin-bottom:16px;'>" if img else ""
+        page_blocks.append(f"""
+        <section style="page-break-after: always; padding: 36px; font-family: sans-serif;">
+          {img_tag}
+          <h2 style="margin:0 0 8px 0; font-size:20px;">{cap}</h2>
+          <p style="margin:0; font-size:14px; line-height:1.6;">{txt}</p>
+        </section>
+        """)
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>{title}</title></head>
+<body style="margin:0; padding:0; background:#fff;">
+  <section style="page-break-after: always; padding: 48px; font-family: sans-serif;">
+    <h1 style="font-size:28px; margin:0;">{title}</h1>
+  </section>
+  {''.join(page_blocks)}
+</body></html>"""
+
+    # PDF 出力（相対画像を解決するため base_url=OUTPUTS）
+    safe_title = "".join([c if c not in r'\/:*?"<>|' else "_" for c in (title or "")]).strip() or "photobook"
+    pdf_path = OUTPUTS / f"{safe_title}.pdf"
+    HTML(string=html, base_url=str(OUTPUTS)).write_pdf(str(pdf_path))
+    print(f"[PDF] done: {pdf_path}")
+
+    # ブラウザ標準PDFビューアで開く
+    return {"ok": True, "pdf": pdf_path.name, "preview": f"/preview?file={pdf_path.name}"}
+
+@app.get("/preview")
+def preview(file: str):
+    pdf = OUTPUTS / file
+    if not pdf.exists():
+        return JSONResponse({"ok": False, "error": f"PDF not found: {file}"}, status_code=404)
+    # 生PDFを返す（ブラウザ標準ビューアで表示）
+    return FileResponse(pdf, media_type="application/pdf")

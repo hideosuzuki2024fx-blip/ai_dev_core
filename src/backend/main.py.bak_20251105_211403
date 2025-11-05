@@ -1,0 +1,108 @@
+from fastapi import FastAPI, UploadFile, Form
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from weasyprint import HTML
+import csv
+
+app = FastAPI()
+
+ROOT = Path.home() / "Projects" / "ai_dev_core"
+OUTPUTS = ROOT / "outputs"
+STATIC = ROOT / "src" / "static"
+OUTPUTS.mkdir(parents=True, exist_ok=True)
+
+app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+
+# =====================================================
+# ✅ CSV生成
+# =====================================================
+@app.post("/csv")
+async def create_csv(title: str = Form(...), captions: str = Form("")):
+    filename = f"{title.replace(' ', '_')}.csv"
+    csv_path = OUTPUTS / filename
+
+    rows = []
+    for line in captions.splitlines():
+        if "," in line:
+            k, v = line.split(",", 1)
+            rows.append([k.strip(), v.strip()])
+
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["caption", "text"])
+        writer.writerows(rows)
+
+    return {"ok": True, "filename": filename}
+
+# =====================================================
+# ✅ CSV一覧取得（UI用）
+# =====================================================
+@app.get("/list_csv")
+def list_csv():
+    items = [f.name for f in OUTPUTS.glob("*.csv")]
+    return {"files": items}
+
+# =====================================================
+# ✅ PDF生成：画像 + CSV の caption/text を 1ブロックにして出力
+# =====================================================
+@app.post("/pdf")
+async def create_pdf(
+    title: str = Form(...),
+    csvname: str = Form(...),
+    files: list[UploadFile] = None,
+):
+    # --- CSV 読み込み ---
+    csv_path = OUTPUTS / csvname
+    if not csv_path.exists():
+        return JSONResponse({"ok": False, "error": "CSV が存在しません"}, status_code=400)
+
+    captions = []
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            captions.append(row)
+
+    # --- 画像保存 ---
+    img_paths = []
+    for img in files:
+        out = OUTPUTS / img.filename
+        out.write_bytes(await img.read())
+        img_paths.append(out)
+
+    # --- HTML 構築：画像 + キャプション ---
+    html_items = ""
+    for idx, p in enumerate(img_paths):
+        url = p.resolve().as_uri()  # file:// 変換（WeasyPrintが必ず読める形）
+        cap = captions[idx]["caption"] if idx < len(captions) else ""
+        txt = captions[idx]["text"] if idx < len(captions) else ""
+
+        html_items += f"""
+        <div style='page-break-after: always; margin-bottom:40px;'>
+            <img src='{url}' style='width:100%; margin-bottom:12px;'>
+            <h2 style='font-size:20px;'>{cap}</h2>
+            <p style='font-size:14px; color:#444;'>{txt}</p>
+        </div>
+        """
+
+    html = f"""
+    <html><body>
+    <h1>{title}</h1>
+    {html_items}
+    </body></html>
+    """
+
+    # --- PDF 書き込み ---
+    pdf_name = f"{title.replace(' ', '_')}.pdf"
+    pdf_path = OUTPUTS / pdf_name
+    HTML(string=html).write_pdf(str(pdf_path))
+
+    return {"ok": True, "pdf": pdf_name, "preview": "/preview?file=" + pdf_name}
+
+# =====================================================
+# ✅ PDF プレビュー
+# =====================================================
+@app.get("/preview")
+def preview(file: str):
+    pdf_path = OUTPUTS / file
+    return FileResponse(pdf_path, media_type="application/pdf")

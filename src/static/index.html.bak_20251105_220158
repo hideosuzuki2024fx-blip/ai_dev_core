@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>📘 CSV→PDF Photobook</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-3xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4">📷 Photobook CSV Generator</h1>
+
+    <!-- A. CSV生成 -->
+    <section class="bg-white p-4 rounded-xl shadow mb-6">
+      <h2 class="font-semibold mb-2">A. CSV作成（保存先: outputs/）</h2>
+      <form id="csvForm" class="space-y-2">
+        <input name="title" type="text" placeholder="CSVのタイトル" class="w-full border rounded px-3 py-2" required />
+        <textarea name="captions" rows="5" class="w-full border rounded px-3 py-2"
+          placeholder="caption,text&#10;Morning Light,Sunrise over the coast.&#10;Evening Calm,Soft orange reflections on the sea."></textarea>
+        <button class="w-full bg-emerald-600 text-white py-2 rounded hover:bg-emerald-700">CSV生成</button>
+      </form>
+      <div id="csvMsg" class="text-sm text-gray-600 mt-2"></div>
+    </section>
+
+    <!-- B. PDF生成 -->
+    <section class="bg-white p-4 rounded-xl shadow">
+      <h2 class="font-semibold mb-2">B. PDF生成（表紙 → 画像+キャプション × Nページ）</h2>
+      <form id="pdfForm" class="space-y-2" enctype="multipart/form-data">
+        <input name="title" type="text" placeholder="フォトブックのタイトル" class="w-full border rounded px-3 py-2" required />
+        <div class="flex gap-2 items-center">
+          <label class="text-sm text-gray-700">保存済みCSV</label>
+          <select id="csvSelect" name="csv_name" class="flex-1 border rounded px-3 py-2"></select>
+          <button id="reloadCsv" type="button" class="border px-3 py-2 rounded">再読込</button>
+        </div>
+        <div>
+          <label class="text-sm text-gray-700">画像（複数可・順番＝ページ順）</label>
+          <input name="files" id="imgFiles" type="file" accept="image/*" multiple class="w-full border rounded p-2" required />
+        </div>
+        <button class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">PDF生成</button>
+      </form>
+      <div id="pdfMsg" class="text-sm text-gray-600 mt-2"></div>
+    </section>
+  </div>
+
+<script>
+async function loadCsvList() {
+  const sel = document.getElementById('csvSelect');
+  sel.innerHTML = "";
+  const res = await fetch('/list_csv');
+  if (!res.ok) { sel.innerHTML = "<option value=''>（読み込み失敗）</option>"; return; }
+  const data = await res.json();
+  if (!data.ok || !data.items || data.items.length === 0) {
+    sel.innerHTML = "<option value=''>（CSVなし）</option>";
+    return;
+  }
+  for (const name of data.items) {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  }
+}
+
+document.getElementById('reloadCsv').addEventListener('click', loadCsvList);
+window.addEventListener('DOMContentLoaded', loadCsvList);
+
+document.getElementById('csvForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('csvMsg');
+  msg.textContent = "⏳ 生成中...";
+  const fd = new FormData(e.target);
+  const r = await fetch('/csv', { method: 'POST', body: fd });
+  const j = await r.json();
+  if (r.ok && j.ok) {
+    msg.textContent = "✅ 保存: " + j.filename;
+    loadCsvList();
+  } else {
+    msg.textContent = "❌ 失敗";
+  }
+});
+
+document.getElementById('pdfForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('pdfMsg');
+  msg.textContent = "⏳ 生成中...";
+  const fd = new FormData(e.target);
+  const r = await fetch('/pdf', { method: 'POST', body: fd, redirect: 'follow' });
+  if (r.redirected) {
+    msg.innerHTML = "✅ <a class='text-blue-600 underline' target='_blank' href='" + r.url + "'>PDFプレビューを開く</a>";
+    window.open(r.url, '_blank');
+  } else {
+    try {
+      const j = await r.json();
+      msg.textContent = "❌ 失敗: " + (j.error || r.status);
+    } catch {
+      msg.textContent = "❌ 失敗: " + r.status;
+    }
+  }
+});
+</script>
+</body>
+</html>

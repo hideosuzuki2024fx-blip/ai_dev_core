@@ -1,0 +1,85 @@
+from fastapi import FastAPI, Form, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from jinja2 import Environment, FileSystemLoader
+from weasyprint import HTML as WeasyHTML
+from pathlib import Path
+import base64, json, os
+
+# === stable paths ===
+THIS_FILE   = Path(__file__).resolve()
+ROOT        = THIS_FILE.parents[2]                    # .../ai_dev_core
+BACKEND_DIR = THIS_FILE.parent                        # .../src/backend
+OUTPUTS     = ROOT / "outputs"
+TEMPLATES   = BACKEND_DIR / "templates"
+PDFJS_DIR   = ROOT / "src" / "frontend" / "pdfjs"
+
+OUTPUTS.mkdir(parents=True, exist_ok=True)
+
+app = FastAPI()
+
+# mount static for pdfjs and outputs (avoid file:///)
+if PDFJS_DIR.exists():
+    app.mount("/static/pdfjs", StaticFiles(directory=str(PDFJS_DIR)), name="pdfjs")
+app.mount("/outputs", StaticFiles(directory=str(OUTPUTS)), name="outputs")
+
+env = Environment(loader=FileSystemLoader(str(TEMPLATES)))
+
+@app.post("/pdf")
+async def generate_photobook(
+    title: str = Form(...),
+    captions: str = Form(...),                   # JSON array [{caption,text},...]
+    images: list[UploadFile] = File(None),
+    theme: str = Form("classic"),
+):
+    try:
+        data = json.loads(captions) if captions else []
+    except Exception:
+        return JSONResponse({"detail": "captions must be JSON array"}, status_code=400)
+
+    pages = []
+    for i, item in enumerate(data):
+        img_b64 = None
+        if images and i < len(images) and images[i] is not None:
+            img_bytes = await images[i].read()
+            img_b64 = base64.b64encode(img_bytes).decode("utf-8")
+        pages.append({
+            "caption": item.get("caption", f"Page {i+1}") if isinstance(item, dict) else str(item),
+            "text":    (item.get("text", "") if isinstance(item, dict) else ""),
+            "image_base64": img_b64
+        })
+
+    template = env.get_template("photobook.html")
+    html_content = template.render(title=title, pages=pages, theme=theme)
+
+    pdf_path = OUTPUTS / f"photobook_{theme}.pdf"
+    # base_url はリソース解決用に backend ディレクトリを渡す
+    WeasyHTML(string=html_content, base_url=str(BACKEND_DIR), encoding="utf-8").write_pdf(str(pdf_path))
+
+    return RedirectResponse(url=f"/preview?file={pdf_path.name}", status_code=303)
+
+@app.get("/preview")
+def preview(file: str):
+    pdf_path = (OUTPUTS / file).resolve()
+    # 出力ディレクトリ外を弾く
+    try:
+        pdf_path.relative_to(OUTPUTS)
+    except Exception:
+        return JSONResponse({"detail":"invalid path"}, status_code=400)
+
+    if not pdf_path.exists():
+        return JSONResponse({"detail":"Not Found", "path_checked": str(pdf_path)}, status_code=404)
+
+    # PDF.js を使って埋め込み表示（/outputs 経由、file:/// は使わない）
+    viewer = "/static/pdfjs/web/viewer.html" if PDFJS_DIR.exists() else None
+    if viewer:
+        iframe_src = f"{viewer}?file=/outputs/{pdf_path.name}"
+    else:
+        # PDF.js 未配置でも最低限表示できるよう fallback
+        iframe_src = f"/outputs/{pdf_path.name}"
+
+    html = f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>PDF Preview - {pdf_path.name}</title>
+<style>html,body,iframe{{height:100%;width:100%;margin:0;border:0}}</style></head>
+<body><iframe src="{iframe_src}" allow="fullscreen"></iframe></body></html>"""
+    return HTMLResponse(html)

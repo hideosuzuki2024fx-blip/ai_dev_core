@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <title>{{ title }}</title>
+  <style>
+    body { font-family: sans-serif; margin: 40px; }
+    .page { page-break-after: always; text-align: center; }
+    .caption { font-weight: bold; margin-top: 10px; font-size: 18px; }
+    .text { margin: 10px 0 30px 0; font-size: 14px; color: #333; }
+    img { max-width: 100%; height: auto; margin-top: 20px; }
+  </style>
+</head>
+<body class='{{ theme }}'>
+  {% for page in pages %}
+  <div class='page'>
+    <h2 class='caption'>{{ page.caption }}</h2>
+    <p class='text'>{{ page.text }}</p>
+    {% if page.image_base64 %}
+      <img src='data:{{ page.image_mime }};base64,{{ page.image_base64 }}' alt='photo'>
+    {% endif %}
+  </div>
+  {% endfor %}
+</body>
+</html>

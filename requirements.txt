@@ -1,0 +1,7 @@
+fastapi==0.115.*
+uvicorn
+jinja2
+pandas>=2.0
+weasyprint>=61.0
+matplotlib
+pandoc>=3.5

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>📘 CSV→PDF Photobook</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-3xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4">📷 Photobook CSV Generator</h1>
+
+    <section class="bg-white p-4 rounded-xl shadow mb-6">
+      <h2 class="font-semibold mb-2">A. CSV作成（保存先: outputs/）</h2>
+      <form id="csvForm" class="space-y-2">
+        <input name="title" type="text" placeholder="CSVのタイトル" class="w-full border rounded px-3 py-2" required />
+        <textarea name="captions" rows="5" class="w-full border rounded px-3 py-2"></textarea>
+        <button class="w-full bg-emerald-600 text-white py-2 rounded">CSV生成</button>
+      </form>
+      <div id="csvMsg" class="text-sm text-gray-600 mt-2"></div>
+    </section>
+
+    <section class="bg-white p-4 rounded-xl shadow">
+      <h2 class="font-semibold mb-2">B. PDF生成</h2>
+      <form id="pdfForm" class="space-y-2" enctype="multipart/form-data">
+        <input name="title" type="text" placeholder="フォトブックのタイトル" class="w-full border rounded px-3 py-2" required />
+        <div class="flex gap-2">
+          <select id="csvSelect" name="csv_name" class="flex-1 border rounded px-3 py-2"></select>
+          <button id="reloadCsv" type="button" class="border px-3 py-2 rounded">更新</button>
+        </div>
+        <input name="files" type="file" accept="image/*" multiple class="w-full border rounded p-2" required />
+        <button class="w-full bg-blue-600 text-white py-2 rounded">PDF生成</button>
+      </form>
+      <div id="pdfMsg" class="text-sm text-gray-600 mt-2"></div>
+    </section>
+  </div>
+
+<script>
+async function loadCsvList() {
+  const sel = document.getElementById("csvSelect");
+  sel.innerHTML = "";
+  const r = await fetch("/list_csv");
+  const j = await r.json();
+  if (!j.ok || !j.items.length) {
+    sel.innerHTML = "<option value=''>CSVなし</option>";
+    return;
+  }
+  j.items.forEach(v => {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v;
+    sel.appendChild(o);
+  });
+}
+document.getElementById("reloadCsv").onclick = loadCsvList;
+window.onload = loadCsvList;
+
+document.getElementById("csvForm").onsubmit = async e => {
+  e.preventDefault();
+  const msg = document.getElementById("csvMsg");
+  msg.textContent = "生成中…";
+  const fd = new FormData(e.target);
+  const r = await fetch("/csv", {method:"POST", body:fd});
+  const j = await r.json();
+  msg.textContent = j.ok ? "✅ "+j.filename : "❌ 失敗";
+  loadCsvList();
+};
+
+document.getElementById("pdfForm").onsubmit = async e => {
+  e.preventDefault();
+  const msg = document.getElementById("pdfMsg");
+  msg.textContent = "生成中…";
+  const fd = new FormData(e.target);
+  const r = await fetch("/pdf", {method:"POST", body:fd, redirect:"follow"});
+  if (r.redirected) {
+    window.open(r.url, "_blank");
+    msg.innerHTML = "✅ <a href='"+r.url+"' target='_blank'>PDFプレビュー</a>";
+  } else {
+    const j = await r.json();
+    msg.textContent = "❌ "+(j.error || "生成失敗");
+  }
+};
+</script>
+</body>
+</html>
