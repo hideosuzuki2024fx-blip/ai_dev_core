@@ -1,0 +1,27 @@
+{
+  "commit_id": "init-0001",
+  "parent_commit": null,
+  "true_intent": {
+    "category": "meta_core_init",
+    "details": "Initialize meta summary for ai_dev_core repository."
+  },
+  "reliability_score": 1.0,
+  "trend_analysis": {
+    "focus": "stability_first",
+    "recent_changes": [],
+    "recommendation": "Establish baseline before particle-level expansion."
+  },
+  "reliability_baseline": 0.90,
+  "context_id": "ai_dev_core_meta_init",
+  "processing_outcome": "initialized",
+  "evidence_sources": [],
+  "reviewer": "system",
+  "score_history": [
+    {
+      "version": "v0.1",
+      "score": 1.0,
+      "timestamp": "2025-11-06T00:00:00Z"
+    }
+  ],
+  "conflict_status": "none"
+}
