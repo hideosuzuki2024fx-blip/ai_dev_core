@@ -1,0 +1,8 @@
+
+# Auto-added ignore rules
+*.bak_*
+outputs/
+project_tree.txt
+*.pyc
+__pycache__/
+ai_dev_core/
