@@ -2,10 +2,50 @@ from fastapi import FastAPI, UploadFile, Form
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import os
 import csv
+from typing import Iterable
 from weasyprint import HTML
 
-ROOT = Path.home() / "Projects" / "ai_dev_core"
+# NOTE: パスの決定は実行環境に依存させず、リポジトリの実際の配置から解決する
+
+
+def _iter_candidates(start: Path) -> Iterable[Path]:
+    """親ディレクトリを含む候補パスを近い順に列挙する。"""
+
+    yield start
+    yield from start.parents
+
+
+def _detect_project_root() -> Path:
+    """リポジトリのルートディレクトリを動的に検出する。
+
+    1. `AI_DEV_CORE_ROOT` or `PROJECT_ROOT` で明示指定されたパスを優先
+    2. 指定がない場合は main.py から親ディレクトリを辿り、マーカーで特定
+    3. マーカーが無ければ `src/backend` の親をフォールバックとして返す
+    """
+
+    env_candidates = [os.environ.get("AI_DEV_CORE_ROOT"), os.environ.get("PROJECT_ROOT")]
+    for env in env_candidates:
+        if not env:
+            continue
+        candidate = Path(env).expanduser().resolve()
+        if candidate.is_dir():
+            return candidate
+
+    markers = ("START_HERE.md", "requirements.txt", ".git")
+    # main.py が格納されているディレクトリから探索する
+    current = Path(__file__).resolve().parent
+
+    for candidate in _iter_candidates(current):
+        if all((candidate / marker).exists() for marker in markers):
+            return candidate
+
+    # 何らかの理由でマーカーが見つからない場合は src/backend の親ディレクトリを返す
+    return current
+
+
+ROOT = _detect_project_root()
 OUTPUTS = ROOT / "outputs"
 STATIC = ROOT / "src" / "static"
 
