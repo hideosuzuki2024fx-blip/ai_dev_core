@@ -32,6 +32,10 @@ apps/, packages/, docs/, ops/, .github/, README.md
 - ローカル: \pwsh ops/scripts/check_integrity.ps1\
 - CI: GitHub Actions \Integrity Check\ が同等検査を実施
 
+## 🎬 クイックデモ（成果物確認）
+- **Photobook Creator**: 依存関係をインストール後、`python apps/photobook_demo/bootstrap.py` を実行。`outputs/` に `Demo Photobook.pdf` が生成され、デモ画像とキャプションが揃った成果物を即時確認可能。併せて `uvicorn src.backend.main:app --reload` を起動すれば、`http://127.0.0.1:8000/static/` からブラウザ閲覧もできる。
+- **TripShorts**: `tripshorts` フォルダをエクスプローラー／Finder で開き、そこでターミナルを起動（Windows は「Shift + 右クリック ▸ PowerShell をここで開く」）。そのターミナルで `python -m venv .venv` → `.venv\Scripts\Activate.ps1`（mac は `source .venv/bin/activate`）→ `pip install -r requirements.txt` → `python -m tripshorts.cli make --input ./tripshorts/input_sample --duration 45 --bgm ./tripshorts/assets/bgm_sample.mp3`。`tripshorts/outputs/<timestamp>/` に `video.mp4`, `thumbnail.jpg`, `metadata.json` が生成され、`python -m tripshorts.cli pack --run tripshorts/outputs/<timestamp>` で公開用 ZIP を作成可能。
+
 ## 🧭 ブランチ運用
 - main: 安定 / dev: 統合 / feat/*: 機能 / docs/*: 文書
 
