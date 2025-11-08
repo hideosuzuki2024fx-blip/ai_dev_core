@@ -1,0 +1,24 @@
+{
+  "meta_version": "v1.0-local",
+  "generated_at": "2025-11-07T11:13:34Z",
+  "trend_analysis": "increase",
+  "average_reliability": 0.92,
+  "reliability_threshold": 0.9,
+  "recommendations": [
+    "factual",
+    "evidence-based",
+    "structural consistency"
+  ],
+  "category_distribution": {
+    "Operational Automation": 0.25,
+    "Reliability Framework": 0.25,
+    "Meta Evaluation": 0.25,
+    "Evidence Integration": 0.25
+  },
+  "source_files": [
+    "eval_checklist.md",
+    "meta_rules.md",
+    "category_taxonomy.json"
+  ],
+  "diagnostic_note": "Locally generated meta summary — default policy baseline."
+}
