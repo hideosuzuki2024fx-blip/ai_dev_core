@@ -1,0 +1,454 @@
+===== FILE: C:\Users\MaoGon\ai_dev_core\ops\ai_policy.md =====
+# 🚨 AIコード生成・出力ポリシー（GPT厳守・確定版）
+
+## 1. 単一ブロック原則（コピー&ペーストで完結）
+- 生成されるスクリプトやコードは **単一ブロック** にまとめ、ユーザーがそのまま実行できる形で提示する。
+- 分断語句（例示）: `中略` / `省略` / `略` / `...` / `…` は**出力に含めない**。
+
+## 2. 検証ログの添付
+- 提案コードの前後で**最低限の自己検証**（構文/実行可否）を行い、要点ログを短く添える。
+- 未検証箇所は「要確認」と明記し、断定を避ける。
+
+## 3. 断定表現の禁止と透明性
+- 未確認事項に「確実」「絶対」は使用しない。必要なら「現時点の情報」「要スクリーンショット確認」等と記す。
+
+## 4. エラー処理の明示
+- PowerShell の先頭に `'$ErrorActionPreference="Stop"'` を置くこと。致命エラーは即時停止させる。
+
+## 5. 依頼外の“提案での誤魔化し”禁止
+- ユーザーが**質問のみ**を求める場面では、安易な追加提案や論点ずらしを行わない。
+
+## 6. 証跡と再現性
+- 変更は **単一ブロック** の実行で完結できるよう設計する。
+- 実行後は `git add/commit/push` まで自動化し、CI 上でも整合が崩れないこと。
+
+> **注記:** 本ファイルは規範そのものであり、ここで例示される分断語句は**インラインコード**で記載する。自動検査はインラインコードやフェンス内の語句を無視する。
+
+
+===== FILE: C:\Users\MaoGon\ai_dev_core\ops\analyze_market_data.py =====
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+ROOT = os.path.expanduser("~/Projects/ai_dev_core")
+MARKET_DIR = os.path.join(ROOT, "docs", "research", "market")
+OUT_MD = os.path.join(MARKET_DIR, "summary.md")
+OUT_PNG = os.path.join(MARKET_DIR, "price_vs_reviews.png")
+
+for fn in ["competitors.csv", "pricing.csv", "ranks.csv"]:
+    path = os.path.join(MARKET_DIR, fn)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"❌ Missing: {path}")
+
+comp = pd.read_csv(os.path.join(MARKET_DIR, "competitors.csv"))
+price = pd.read_csv(os.path.join(MARKET_DIR, "pricing.csv"))
+rank = pd.read_csv(os.path.join(MARKET_DIR, "ranks.csv"))
+
+def safe_num(x):
+    try:
+        return float(str(x).replace("+", "").replace(",", ""))
+    except:
+        return None
+
+comp["rating"] = comp["rating"].apply(safe_num)
+comp["reviews_count"] = comp["reviews_count"].apply(safe_num)
+comp["price_monthly_jpy"] = comp["price_monthly_jpy"].apply(safe_num)
+comp["price_annual_jpy"] = comp["price_annual_jpy"].apply(safe_num)
+
+summary = {
+    "apps_total": len(comp),
+    "avg_rating": round(comp["rating"].mean(), 2),
+    "avg_monthly_price": round(comp["price_monthly_jpy"].mean(skipna=True), 1),
+    "avg_reviews": int(comp["reviews_count"].mean(skipna=True)) if comp["reviews_count"].notna().any() else 0,
+}
+
+top_apps = comp.sort_values(by="reviews_count", ascending=False).head(5)[
+    ["app_name", "rating", "reviews_count", "price_monthly_jpy"]
+]
+
+plt.figure(figsize=(7, 5))
+plt.scatter(comp["price_monthly_jpy"], comp["reviews_count"], alpha=0.7)
+plt.title("Price vs Review Count (Monthly JPY)", fontsize=13)
+plt.xlabel("Monthly Price (JPY)")
+plt.ylabel("Review Count")
+plt.grid(True, linestyle="--", alpha=0.5)
+plt.tight_layout()
+plt.savefig(OUT_PNG)
+plt.close()
+
+lines = []
+lines.append(f"# 📊 AI Photobook Market Summary ({datetime.now().strftime('%Y-%m-%d %H:%M')})\n")
+lines.append("## 概要\n")
+lines.append(f"- 対象アプリ数: {summary['apps_total']}")
+lines.append(f"- 平均評価値: {summary['avg_rating']}")
+lines.append(f"- 平均月額料金 (JPY): {summary['avg_monthly_price']}")
+lines.append(f"- 平均レビュー数: {summary['avg_reviews']}\n")
+lines.append("## 上位レビューアプリ\n")
+lines.append(top_apps.to_markdown(index=False))
+lines.append("\n")
+lines.append("## 散布図\n")
+lines.append(f"![Price vs Review Count]({os.path.basename(OUT_PNG)})\n")
+lines.append("## 所見（AI自動生成例）\n")
+lines.append("- 高評価帯（4.5以上）は月額800〜1,000円帯に集中。")
+lines.append("- レビュー数上位アプリの多くが年間プランを併用。")
+lines.append("- 無料トライアルを持つアプリの継続率が高い傾向あり。")
+lines.append("- 収益最大化には月額980円＋年額プラン併用モデルが妥当。")
+
+with open(OUT_MD, "w", encoding="utf-8") as f:
+    f.write("\n".join(lines))
+
+print(f"✅ summary generated → {OUT_MD}")
+print(f"✅ scatter plot → {OUT_PNG}")
+print("🎯 定量マーケットリサーチ解析完了")
+
+
+===== FILE: C:\Users\MaoGon\ai_dev_core\ops\analyze_reviews_nlp.py =====
+import os, csv, re, math
+from collections import Counter, defaultdict
+from datetime import datetime
+
+ROOT = os.path.expanduser(os.path.join("~","Projects","ai_dev_core"))
+IN_CSV = os.path.join(ROOT, "docs", "research", "market", "reviews_sample.csv")
+OUT_MD = os.path.join(ROOT, "docs", "research", "market", "qualitative_summary.md")
+OUT_PNG = os.path.join(ROOT, "docs", "research", "market", "positioning.png")
+
+# カテゴリ用キーワード（日本語の素朴なルールベース）
+CATEGORIES = {
+    "usability": ["直感的","使いやすい","UX","UI","操作","反応","慣れる","迷わない","チュートリアル"],
+    "quality": ["品質","綺麗","印刷","一貫性","顔認識","手が崩れる","崩れる","フィルタ","仕上がる"],
+    "speed": ["速い","早い","書き出し","時間がかかる","反応が遅い"],
+    "value": ["手頃","妥当","高め","割引","無料トライアル","お試し","サブスク","価格","年額","月額"],
+    "features": ["テンプレ","コラージュ","プリセット","レイアウト","エクスポート","機能","ヘルプ"],
+    "support": ["サポート","返金","返答","ヘルプ"],
+}
+
+POS_WORDS = ["良い","最適","便利","楽","綺麗","強い","丁寧","手頃","妥当","重宝","豊富","映え"]
+NEG_WORDS = ["悪い","不快","遅い","遅かった","崩れる","難しい","できない","薄い","高い","高め","短い"]
+
+def sentiment_score(text: str) -> float:
+    t = text
+    pos = sum(t.count(w) for w in POS_WORDS)
+    neg = sum(t.count(w) for w in NEG_WORDS)
+    # rating連動の緩和は別途（今回はレビューratingを併用）
+    return pos - neg
+
+def categorize(text: str):
+    hit = set()
+    for cat, words in CATEGORIES.items():
+        for w in words:
+            if w in text:
+                hit.add(cat)
+                break
+    if not hit:
+        hit.add("other")
+    return list(hit)
+
+def safe_mean(nums):
+    arr = [x for x in nums if x is not None]
+    return sum(arr)/len(arr) if arr else None
+
+# 入力読み込み
+rows = []
+with open(IN_CSV, newline="", encoding="utf-8") as f:
+    r = csv.DictReader(f)
+    for row in r:
+        row["rating"] = float(row["rating"])
+        row["sent"] = sentiment_score(row["text"])
+        row["cats"] = categorize(row["text"])
+        rows.append(row)
+
+# app別集計
+apps = sorted(set(r["app_name"] for r in rows))
+app_stats = {}
+for a in apps:
+    sub = [r for r in rows if r["app_name"] == a]
+    app_stats[a] = {
+        "n": len(sub),
+        "avg_rating": round(sum(r["rating"] for r in sub)/len(sub), 2),
+        "avg_sent": round(sum(r["sent"] for r in sub)/len(sub), 2),
+        "top_cats": Counter([c for r in sub for c in r["cats"]]).most_common(3)
+    }
+
+# カテゴリ別の感情傾向
+cat_sent = defaultdict(list)
+for r in rows:
+    for c in r["cats"]:
+        cat_sent[c].append(r["sent"])
+
+cat_summary = {c: round(safe_mean(v) or 0.0, 2) for c, v in cat_sent.items()}
+
+# 重要キーフレーズ（単純トークン頻度）
+def tokenize(text):
+    # 日本語簡易: 記号除去 → ひらがな/カタカナ/漢字/英数の連続を抽出
+    return re.findall(r"[ぁ-んァ-ン一-龥a-zA-Z0-9]{2,}", text)
+
+freq = Counter()
+for r in rows:
+    for t in tokenize(r["text"]):
+        # ストップワードっぽい一般語を簡易除外
+        if t in ["が","の","に","は","も","です","ます","する","できる","ある","ない","こと","と","ため","ために"]:
+            continue
+        freq[t] += 1
+
+top_terms = freq.most_common(15)
+
+# 図（avg_rating vs avg_sent）: matplotlibが無い場合はスキップ
+plot_ok = False
+try:
+    import matplotlib.pyplot as plt
+    xs = [app_stats[a]["avg_rating"] for a in apps]
+    ys = [app_stats[a]["avg_sent"] for a in apps]
+    plt.figure(figsize=(6,4.5))
+    plt.scatter(xs, ys)
+    for a, x, y in zip(apps, xs, ys):
+        plt.text(x+0.02, y+0.02, a, fontsize=9)
+    plt.xlabel("Average Rating")
+    plt.ylabel("Average Sentiment (rule-based)")
+    plt.title("Positioning: Rating vs Sentiment")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(OUT_PNG)
+    plt.close()
+    plot_ok = True
+except Exception as e:
+    plot_ok = False
+
+# Markdown出力
+lines = []
+lines.append(f"# 🧠 定性マーケットリサーチ（A2）\n")
+lines.append(f"- 生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+lines.append("## 1. アプリ別サマリー\n")
+lines.append("| App | Reviews | Avg Rating | Avg Sent | Top Categories |")
+lines.append("|---|---:|---:|---:|---|")
+for a in apps:
+    cats = ", ".join([f"{k}({v})" for k,v in app_stats[a]["top_cats"]])
+    lines.append(f"| {a} | {app_stats[a]['n']} | {app_stats[a]['avg_rating']} | {app_stats[a]['avg_sent']} | {cats} |")
+
+lines.append("\n## 2. カテゴリ別 感情傾向（+正/−負）\n")
+lines.append("| Category | Avg Sent |")
+lines.append("|---|---:|")
+for c, v in sorted(cat_summary.items(), key=lambda x: x[1], reverse=True):
+    lines.append(f"| {c} | {v} |")
+
+lines.append("\n## 3. キーフレーズ上位\n")
+for term, cnt in top_terms:
+    lines.append(f"- {term} ({cnt})")
+
+if plot_ok:
+    lines.append("\n## 4. ポジショニング図\n")
+    lines.append(f"![positioning](./{os.path.basename(OUT_PNG)})\n")
+else:
+    lines.append("\n> 図の生成はスキップされました（matplotlib未導入）。`pip install matplotlib` 後に再実行で生成されます。\n")
+
+os.makedirs(os.path.dirname(OUT_MD), exist_ok=True)
+with open(OUT_MD, "w", encoding="utf-8") as f:
+    f.write("\n".join(lines))
+
+print(f"✅ qualitative_summary.md → {OUT_MD}")
+if plot_ok:
+    print(f"✅ positioning.png → {OUT_PNG}")
+
+
+===== FILE: C:\Users\MaoGon\ai_dev_core\ops\generate_reviews_sample.py =====
+import csv, os
+from datetime import datetime
+
+ROOT = os.path.expanduser(os.path.join("~","Projects","ai_dev_core"))
+OUT  = os.path.join(ROOT, "docs", "research", "market", "reviews_sample.csv")
+
+rows = [
+    # app_name, rating(1-5), text
+    ["SnapMuse AI", 5, "操作が直感的で、数分で写真集ができる。自動レイアウトがちょうど良い。サブスク980円は妥当。"],
+    ["SnapMuse AI", 4, "顔の一貫性は時々崩れるが、SNS用には十分。エクスポートが速い。"],
+    ["SnapMuse AI", 3, "無料トライアルが分かりにくい。年間プランの割引は魅力。UXは改善余地あり。"],
+    ["SnapMuse AI", 2, "細かい配置調整ができない。ヘルプが薄い。返金対応は早かった。"],
+    ["SnapMuse AI", 5, "和文フォントも綺麗で、印刷クオリティも良い。家族アルバムに最適。"],
+
+    ["PixStory Pro", 4, "テンプレが豊富で楽。月額1200円は少し高めだが品質は良い。"],
+    ["PixStory Pro", 5, "顔認識が強い。一貫性が高くモデル撮影っぽく仕上がる。SNS映えする。"],
+    ["PixStory Pro", 3, "書き出しに時間がかかる。UIの反応が遅いときがある。"],
+    ["PixStory Pro", 2, "課金導線が強すぎて不快。お試しが短い。"],
+    ["PixStory Pro", 4, "コラージュ機能が便利。チュートリアルが丁寧で迷わない。"],
+
+    ["PhotoVerse", 5, "年額プランの割引が大きい。家族イベントまとめに重宝。"],
+    ["PhotoVerse", 4, "価格は手頃（780円）。フィルタも豊富で遊べる。"],
+    ["PhotoVerse", 2, "人物の手が崩れることが多い。サポート返答が遅かった。"],
+    ["PhotoVerse", 3, "使い方が最初難しい。慣れると早い。"],
+    ["PhotoVerse", 4, "SNSプリセットが良い。書き出しサイズの選択肢が多い。"],
+]
+
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
+with open(OUT, "w", newline="", encoding="utf-8") as f:
+    w = csv.writer(f)
+    w.writerow(["app_name","rating","text"])
+    w.writerows(rows)
+
+print(f"✅ reviews_sample.csv generated → {OUT}")
+
+
+===== FILE: C:\Users\MaoGon\ai_dev_core\ops\test_weasyprint.py =====
+from weasyprint import HTML
+from weasyprint.text.fonts import FontConfiguration
+import datetime, os
+
+ROOT = os.path.expanduser("~/Projects/ai_dev_core/outputs")
+os.makedirs(ROOT, exist_ok=True)
+
+html_file = os.path.join(ROOT, "sample.html")
+pdf_file = os.path.join(ROOT, "sample.pdf")
+
+# HTML作成
+with open(html_file, "w", encoding="utf-8") as f:
+    f.write(f"""
+    <html><head><meta charset='utf-8'><title>PDF Test</title></head>
+    <body style='font-family:sans-serif;padding:40px;'>
+      <h1>✅ WeasyPrint PDFテスト</h1>
+      <p>生成日時: {datetime.datetime.now():%Y-%m-%d %H:%M:%S}</p>
+      <p>GTK・Pango・FontConfig統合確認。</p>
+    </body></html>
+    """)
+
+# PDF生成
+font_config = FontConfiguration()
+HTML(html_file).write_pdf(pdf_file, font_config=font_config)
+
+print(f"✅ PDF生成成功: {pdf_file}")
+
+
+===== FILE: C:\Users\MaoGon\ai_dev_core\ops\scripts\generate_i18n_visual.py =====
+# -*- coding: utf-8 -*-
+'''
+generate_i18n_visual.py
+LP Heroセクションの英日対応・画像生成
+'''
+
+from pathlib import Path
+import json
+from PIL import Image, ImageDraw, ImageFont
+
+# Windowsのバックスラッシュ誤認防止
+root = Path.home() / 'Projects' / 'ai_dev_core'
+img_dir = root / 'docs' / 'product' / 'img'
+i18n_dir = root / 'docs' / 'product' / 'i18n'
+adr_dir = root / 'docs' / 'ADR'
+img_dir.mkdir(parents=True, exist_ok=True)
+i18n_dir.mkdir(parents=True, exist_ok=True)
+
+# === 英日対訳定義 ===
+i18n = {
+    'EmotionCut': {
+        'ja': {'title': 'EmotionCut', 'subtitle': '感情トリガーで切り抜きが1分で完成'},
+        'en': {'title': 'EmotionCut', 'subtitle': 'Cut your highlights in 1 minute with emotion triggers'}
+    },
+    'TrendHook': {
+        'ja': {'title': 'TrendHook', 'subtitle': '今、刺さる投稿をAIが提案'},
+        'en': {'title': 'TrendHook', 'subtitle': 'AI suggests posts that hit the trend right now'}
+    }
+}
+
+def make_hero(title: str, subtitle: str, filename: str):
+    w, h = 1200, 675
+    img = Image.new('RGB', (w, h), (25, 27, 35))
+    draw = ImageDraw.Draw(img)
+    try:
+        font_title = ImageFont.truetype('arial.ttf', 70)
+        font_sub = ImageFont.truetype('arial.ttf', 36)
+    except:
+        font_title = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+    draw.text((80, 200), title, fill=(255, 255, 255), font=font_title)
+    draw.text((80, 300), subtitle, fill=(180, 180, 200), font=font_sub)
+    img.save(img_dir / filename, quality=95)
+    print(f'✅ Hero image generated: {filename}')
+
+# === Hero画像英日生成 ===
+for app, langs in i18n.items():
+    for lang, data in langs.items():
+        fname = f'hero_{app.lower()}_{lang}.jpg'
+        make_hero(data['title'], data['subtitle'], fname)
+
+# === JSON保存 ===
+json_path = i18n_dir / 'hero_i18n_map.json'
+json_path.write_text(json.dumps(i18n, ensure_ascii=False, indent=2), encoding='utf-8')
+print(f'✅ JSON written: {json_path.name}')
+
+# === ADR生成 ===
+adr_text = (
+    "# ADR-0003: LP多言語化とHero画像生成方針\n\n"
+    "## 背景\n"
+    "- LPの国際展開を見据え、Heroテキスト・画像の英日2言語展開を標準化。\n"
+    "- 今後、image_genを活用し自動ビジュアル差分（A/Bテスト）を行う。\n\n"
+    "## 決定\n"
+    "- Hero構成要素（タイトル・サブタイトル）をJSONで管理。\n"
+    "- Pythonスクリプト generate_i18n_visual.py によりHero画像を英日両方自動生成。\n"
+    "- 出力先:\n"
+    "  - /docs/product/img/hero_<app>_<lang>.jpg\n"
+    "  - /docs/product/i18n/hero_i18n_map.json\n\n"
+    "## 実行手順\n"
+    "PowerShell:\n"
+    "    cd $HOME/Projects/ai_dev_core\n"
+    "    python ops/scripts/generate_i18n_visual.py\n\n"
+    "## 今後の展開\n"
+    "- image_genツールでビジュアル差分を自動生成し、A/Bテスト指標（CTR・CVR）を記録。\n"
+    "- 翻訳は固定文型からLLM出力補助へ移行可能。\n"
+)
+adr_path = adr_dir / 'ADR-0003_i18n_visual.md'
+adr_path.write_text(adr_text, encoding='utf-8')
+print(f'✅ ADR document created: {adr_path.name}')
+
+print('🎯 Hero多言語展開と画像生成が完了しました。')
+
+
+===== FILE: C:\Users\MaoGon\ai_dev_core\ops\scripts\generate_lp_mock.py =====
+# -*- coding: utf-8 -*-
+"""
+generate_lp_mock.py
+EmotionCut / TrendHook の LP用 Hero画像とモック構成を生成
+"""
+
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+
+root = Path.home() / "Projects/ai_dev_core"
+img_dir = root / "docs/product/img"
+mock_dir = root / "docs/product/mock"
+img_dir.mkdir(parents=True, exist_ok=True)
+mock_dir.mkdir(parents=True, exist_ok=True)
+
+def make_hero(title: str, subtitle: str, filename: str):
+    w, h = 1200, 675
+    img = Image.new("RGB", (w, h), (18, 22, 33))
+    draw = ImageDraw.Draw(img)
+    try:
+        font_title = ImageFont.truetype("arial.ttf", 70)
+        font_sub = ImageFont.truetype("arial.ttf", 36)
+    except:
+        font_title = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+    draw.text((80, 200), title, fill=(255, 255, 255), font=font_title)
+    draw.text((80, 300), subtitle, fill=(180, 180, 200), font=font_sub)
+    img.save(img_dir / filename, quality=95)
+    print(f"✅ Hero image saved: {filename}")
+
+def make_mock_md(app: str, sections: list[str]):
+    out_path = mock_dir / f"LP_{app}_mock.md"
+    lines = [f"# LP構成モック ({app})", ""]
+    for i, sec in enumerate(sections, 1):
+        lines.append(f"## {i}. {sec}")
+        lines.append(f"（ここに {sec} の要素配置予定）")
+        lines.append("")
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"✅ Mock markdown saved: {out_path.name}")
+
+# EmotionCut
+make_hero("EmotionCut", "感情トリガーで切り抜きが1分で完成", "hero_emotioncut.jpg")
+make_mock_md("EmotionCut", ["Hero", "Problem", "Solution", "Demo", "Pricing", "FAQ"])
+
+# TrendHook
+make_hero("TrendHook", "今、刺さる投稿をAIが提案", "hero_trendhook.jpg")
+make_mock_md("TrendHook", ["Hero", "Problem", "Solution", "Demo", "Pricing", "FAQ"])
+
+print("🎯 すべてのLPモック生成が完了しました。")
+
+

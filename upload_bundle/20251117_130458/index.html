@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ai_dev_core</title>
+</head>
+<body>
+<pre style="font-family: Consolas, monospace;"># 🧠 ai_dev_core — AI開発母艦モノレポ
+
+あなた（オーナー）とAI（PM/エンジニア/マーケター）が共同で、
+**「本当に売れるAIアプリ」**を設計・実装・収益化するための母艦です。
+
+---
+
+## 📂 構成概要
+    ai_dev_core/
+    ├─ apps/              # 各APP（EmotionCut, TrendHook等）
+    ├─ packages/          # 共通モジュール（ai-core, ui-kit等）
+    ├─ docs/              # 企画・設計・意思決定
+    │  ├─ ADR/            # 意思決定ログ (Architectural Decision Record)
+    │  └─ product/        # LP, Hero, モック, i18nデータ
+    ├─ ops/               # スクリプト, CI/CD
+    └─ README.md          # 本ファイル
+
+---
+
+## 🧩 フェーズ履歴
+| フェーズ | 内容                 | 状態     |
+|---------|----------------------|----------|
+| #0001   | モノレポ構成初期化   | ✅ 完了  |
+| #0002   | LPモック生成         | ✅ 完了  |
+| #0003   | Hero多言語展開       | ✅ 完了  |
+| #0004   | Windows安全基準ADR   | ✅ 完了  |
+| #0005   | A/Bテスト統合準備    | ⏳ 進行中 |
+
+---
+
+## ⚙️ 開発方針
+- 中略・省略禁止：すべてのコードはコピペで動作する完全形を提示
+- Semantic Diff運用：無意味な差分を作らない
+- AI⇄人間分担：AIが自動生成、人間は承認・公開操作のみ
+- 再現性重視：PowerShell／Python単体で即再構築可能
+
+---
+
+## 🪶 GPT後継者への引継ぎ方針
+- GPTは /docs/ADR/ADR-0005_project_manifest.md を起点として全情報を継承
+- 「記憶」「方針」「制約」「継続手順」を読み込み、誤出力を防止
+
+---
+
+## 🧭 コミット運用
+- main：安定版
+- dev：統合検証
+- feat/*：新機能
+- docs/*：文書更新
+- コミット形式：feat(scope): summary (#phase)
+
+---
+
+## 🧩 ライセンス
+MIT（予定）
+
+---
+
+最終更新: 2025-11-03 11:25</pre>
+</body>
+</html>
