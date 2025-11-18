@@ -3,6 +3,7 @@ import sys
 import subprocess
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import locale
 
 
 def run_tool():
@@ -40,16 +41,28 @@ def run_tool():
         args.append("--dry-run")
 
     text_log.delete("1.0", tk.END)
-    text_log.insert(tk.END, "コマンド実行中:\n" + " ".join(args) + "\n\n")
+    text_log.insert(tk.END, "コマンド実行中:\\n" + " ".join(args) + "\\n\\n")
     root.update_idletasks()
 
     try:
-        proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        # バイト列として取得して、後で安全にデコードする
+        proc = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
     except Exception as e:
         messagebox.showerror("エラー", f"実行に失敗しました:\\n{e}")
         return
 
-    text_log.insert(tk.END, proc.stdout)
+    # ロケールのエンコーディングでデコードし、失敗する部分は置き換え
+    encoding = locale.getpreferredencoding(False) or "utf-8"
+    try:
+        output_text = proc.stdout.decode(encoding, errors="replace")
+    except Exception as e:
+        output_text = f"ログのデコード中にエラーが発生しました: {e}\\n"
+
+    text_log.insert(tk.END, output_text)
 
     if proc.returncode == 0:
         messagebox.showinfo("完了", "処理が完了しました。")
