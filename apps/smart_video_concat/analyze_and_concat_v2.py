@@ -28,7 +28,8 @@ def run_ffmpeg_concat_reencode(files, output, workdir, crf=20, preset="veryfast"
     with open(list_path, "w", encoding="utf-8") as f:
         for p in files:
             escaped = p.replace("'", "''")
-            f.write(f"file '{escaped}'\\n")
+            # ここを修正: \n を文字列としてではなく「改行」として書き込む
+            f.write(f"file '{escaped}'\n")
 
     cmd = [
         "ffmpeg",
@@ -99,7 +100,7 @@ def main():
     # 特徴抽出
     features = []
     for p in files:
-        print(f"\\n特徴抽出中 (v2): {p}")
+        print(f"\n特徴抽出中 (v2): {p}")
         start_feat, end_feat = extract_features(p)
         features.append({"path": p, "start": start_feat, "end": end_feat})
 
@@ -107,19 +108,19 @@ def main():
     order = build_order(features)
     ordered_files = [features[i]["path"] for i in order]
 
-    print("\\n推定された連結順 (先頭 -> 末尾) [v2]:")
+    print("\n推定された連結順 (先頭 -> 末尾) [v2]:")
     for i, p in enumerate(ordered_files):
         print(f"{i+1:2d}. {p}")
 
     if args.dry_run:
-        print("\\n--dry-run 指定のため、ffmpeg による連結は行いません。")
+        print("\n--dry-run 指定のため、ffmpeg による連結は行いません。")
         return
 
     out_path = os.path.abspath(args.output)
     workdir = os.path.dirname(out_path) or "."
     os.makedirs(workdir, exist_ok=True)
     run_ffmpeg_concat_reencode(ordered_files, out_path, workdir, crf=args.crf, preset=args.preset)
-    print("\\n出力ファイル (v2):", out_path)
+    print("\n出力ファイル (v2):", out_path)
 
 
 if __name__ == "__main__":
