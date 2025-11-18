@@ -15,17 +15,17 @@
 - run_smart_concat.ps1  
   analyze_and_concat.py を呼び出す v1 用 PowerShell ラッパーです。
 
-- gui.py  
-  v1 を呼び出す Tkinter ベースの簡易 GUI です。
-
-- run_smart_concat_gui.ps1  
-  gui.py を起動するための PowerShell ラッパーです。
-
 - analyze_and_concat_v2.py  
   v1 と同じ特徴量・順序決定ロジックを利用しつつ、ffmpeg で libx264 による再エンコードを行う v2 本体です。
 
-- run_smart_concat_v2.ps1  
+- run_smart_video_concat_v2.ps1  
   analyze_and_concat_v2.py を呼び出す v2 用 PowerShell ラッパーです。
+
+- gui.py  
+  Tkinter ベースの簡易 GUI です。画面上で v1 / v2 モードを選択し、入力ディレクトリや出力ファイルを指定して実行できます。
+
+- run_smart_concat_gui.ps1  
+  gui.py を起動するための PowerShell ラッパーです。
 
 ## 前提条件
 
@@ -71,19 +71,24 @@ pwsh .\apps\smart_video_concat\run_smart_concat_v2.ps1 -InputDir "D:\clips" -Crf
 
 pwsh .\apps\smart_video_concat\run_smart_concat_v2.ps1 -InputDir "D:\clips" -DryRun
 
-## GUI からの利用（v1）
+## GUI からの利用（v1 / v2）
 
 1. リポジトリ直下 (ai_dev_core) から、次のコマンドで GUI を起動します。
 
    pwsh .\apps\smart_video_concat\run_smart_concat_gui.ps1
 
 2. 表示されたウィンドウで以下を指定します。
+   - モード: v1 (高速 / 非再エンコード) または v2 (再エンコード / 互換性重視)
    - 入力ディレクトリ: 連結したい mp4 ファイルが入っているフォルダ
    - ファイルパターン: デフォルトは *.mp4
    - 出力ファイル: 連結結果を書き出す mp4 のパス
-   - 必要に応じて recursive / Dry run
+   - v2 モードのときは、必要に応じて CRF / preset を指定（デフォルトは CRF=20, preset=veryfast）
 
-3. 「実行」ボタンを押すと、ウィンドウ下部のログ欄に処理内容と実行ログが表示されます。
+3. 必要に応じてオプションを指定します。
+   - サブディレクトリも含める (recursive)
+   - Dry run (連結を実行しない)
+
+4. 「実行」ボタンを押すと、ウィンドウ下部のログ欄に処理内容と実行ログが表示されます。
 
 デスクトップからすぐ起動したい場合は、この run_smart_concat_gui.ps1 へのショートカットを作成し、デスクトップに配置してください。
 
