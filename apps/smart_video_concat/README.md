@@ -2,6 +2,8 @@
 
 動画ファイルの冒頭と終端を簡易解析し、つながりが滑らかになりやすい順番に並べ替えて ffmpeg で連結するツールです。
 
+コマンドラインからの利用と、簡単なデスクトップ GUI からの利用の両方に対応しています。
+
 ## ファイル構成
 
 - analyze_and_concat.py  
@@ -12,17 +14,24 @@
 - run_smart_concat.ps1  
   リポジトリ直下から簡単にこのツールを呼び出すための PowerShell ラッパーです。
 
+- gui.py  
+  Tkinter を使った簡易 GUI ラッパーです。入力ディレクトリや出力ファイルを GUI 上で指定して実行できます。
+
+- run_smart_concat_gui.ps1  
+  gui.py を起動する PowerShell ラッパーです。ダブルクリックやショートカットから GUI を立ち上げる用途を想定しています。
+
 ## 前提条件
 
 - Python 3.10 以降
 - Python パッケージ: opencv-python, numpy
 - ffmpeg がインストールされており、PATH から ffmpeg として実行できること
+- GUI 利用時は、Python に Tkinter がインストールされていること（通常の Windows 向け Python であれば同梱されています）
 
-## 使い方
+## コマンドラインからの使い方
 
 リポジトリ直下 (ai_dev_core) から PowerShell で実行します。
 
-例:
+カレントディレクトリ直下の *.mp4 を対象に、自動順序で連結する例:
 
 pwsh .\apps\smart_video_concat\run_smart_concat.ps1
 
@@ -37,6 +46,25 @@ pwsh .\apps\smart_video_concat\run_smart_concat.ps1 -InputDir "D:\clips" -Patter
 並び順だけ確認したい場合 (ffmpeg 実行なし):
 
 pwsh .\apps\smart_video_concat\run_smart_concat.ps1 -InputDir "D:\clips" -DryRun
+
+## GUI からの使い方
+
+1. リポジトリ直下 (ai_dev_core) から、次のコマンドで GUI を起動します。
+
+   pwsh .\apps\smart_video_concat\run_smart_concat_gui.ps1
+
+2. 表示されたウィンドウで以下を指定します。
+   - 入力ディレクトリ: 連結したい mp4 ファイルが入っているフォルダ
+   - ファイルパターン: デフォルトは *.mp4
+   - 出力ファイル: 連結結果を書き出す mp4 のパス
+
+3. 必要に応じてオプションを指定します。
+   - サブディレクトリも含める (recursive)
+   - Dry run (連結を実行しない)
+
+4. 「実行」ボタンを押すと、ウィンドウ下部のログ欄に処理内容と実行ログが表示されます。
+
+デスクトップからすぐ起動したい場合は、この run_smart_concat_gui.ps1 へのショートカットを作成し、デスクトップに配置してください。
 
 ## 動作概要
 
