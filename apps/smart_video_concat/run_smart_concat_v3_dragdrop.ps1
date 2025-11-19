@@ -22,55 +22,47 @@ if (-not $args -or $args.Count -lt 1) {
     exit 1
 }
 
-# ---- D&D で分割されたトークンを「拡張子 .mp4 まで」結合してフルパスに戻す ----
-$rawTokens = @($args)
-$combined = @()
-$current = ""
+# ----- ここがポイント：$args 全体から .mp4 パスを regex で抜き出す -----
+# 例:
+#   D:\clips\test\0 (6).mp4 D:\clips\test\0 (54).mp4 ...
+#   "D:\clips\test\0 (6).mp4" "D:\clips\test\0 (54).mp4" ...
+#
+# をまとめて 1 本の文字列にして、以下のようなパターンで抽出:
+#   - "..." で囲まれた .mp4
+#   - そうでなければ、空白以外の .mp4
+$raw = [string]::Join(' ', $args)
 
-foreach ($t in $rawTokens) {
-    if ($current) {
-        $candidate = "$current $t"
-    } else {
-        $candidate = $t
-    }
+$pattern = '"[^"]+\.mp4"|[^" ]+\.mp4'
+$matches = [System.Text.RegularExpressions.Regex]::Matches($raw, $pattern)
 
-    if ($candidate -match '\.(mp4)$') {
-        # .mp4 で終わっていれば「1つのファイルパス候補」とみなして Resolve-Path
-        try {
-            $resolved = Resolve-Path $candidate -ErrorAction Stop
-            $combined += $resolved.ProviderPath
-            $current = ""
-        }
-        catch {
-            # まだ途中か、パスがおかしいので、次のトークンと結合を続ける
-            if ($current) {
-                $current = "$current $t"
-            } else {
-                $current = $t
-            }
-        }
-    }
-    else {
-        # まだファイル名の途中とみなして結合を続ける
-        if ($current) {
-            $current = "$current $t"
-        } else {
-            $current = $t
-        }
-    }
-}
-
-if ($current) {
-    Write-Error "ファイルパスを正しく復元できませんでした: '$current'"
+if ($matches.Count -lt 1) {
+    Write-Error "引数から .mp4 ファイルパスを抽出できませんでした。"
+    Write-Host "raw args string: $raw"
     exit 1
 }
 
-if ($combined.Count -lt 1) {
+$files = @()
+foreach ($m in $matches) {
+    $path = $m.Value.Trim('"')
+    try {
+        $resolved = Resolve-Path $path -ErrorAction Stop
+        $files += $resolved.ProviderPath
+    }
+    catch {
+        Write-Error "入力ファイルが見つかりません: $path"
+        exit 1
+    }
+}
+
+if ($files.Count -lt 1) {
     Write-Error "有効な .mp4 入力ファイルが見つかりませんでした。"
     exit 1
 }
 
-$files = $combined
+Write-Host "D&D / 引数から復元したファイル一覧:" -ForegroundColor Cyan
+foreach ($f in $files) {
+    Write-Host " - $f"
+}
 
 # 出力: 先頭ファイルと同じフォルダに smart_concat_v3.mp4
 $firstDir = Split-Path -Parent $files[0]
