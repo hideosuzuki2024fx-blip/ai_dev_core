@@ -76,6 +76,7 @@ $height = 1080
 
 $python = "python"
 
+# Python 引数配列を作成（ここから先は & でスプラット呼び出し）
 $argsList = @($Analyzer)
 foreach ($f in $files) {
     $argsList += $f
@@ -89,13 +90,15 @@ $argsList += @(
 )
 
 Write-Host "Running smart_video_concat v3 (drag & drop mode)..." -ForegroundColor Cyan
-Write-Host $python $($argsList -join " ")
+Write-Host $python ($argsList -join ' ')
 
-$proc = Start-Process -FilePath $python -ArgumentList $argsList -NoNewWindow -PassThru -Wait
+# ★ Start-Process をやめて、& python @argsList でそのまま渡す
+& $python @argsList
+$exit = $LASTEXITCODE
 
-if ($proc.ExitCode -ne 0) {
-    Write-Error "analyze_and_concat_v3.py がエラー終了しました (exit code=$($proc.ExitCode))"
-    exit $proc.ExitCode
+if ($exit -ne 0) {
+    Write-Error "analyze_and_concat_v3.py がエラー終了しました (exit code=$exit)"
+    exit $exit
 }
 
 Write-Host "出力ファイル: $output" -ForegroundColor Green
