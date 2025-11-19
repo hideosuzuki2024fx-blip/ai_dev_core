@@ -1,3 +1,4 @@
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$InputDir = ".",
     [string]$Pattern = "*.mp4",
@@ -22,7 +23,7 @@ if (-not (Test-Path $Analyzer)) {
 
 $python = "python"
 
-# 位置引数（D&D / ファイル直指定）をそのまま拾う
+# 位置引数（D&D / ファイル直指定）は $args にそのまま入ってくる前提
 $filesFromArgs = @()
 if ($args -and $args.Count -gt 0) {
     foreach ($a in $args) {
@@ -38,7 +39,7 @@ if ($args -and $args.Count -gt 0) {
 }
 
 if ($filesFromArgs.Count -gt 0) {
-    # ファイル直指定モード（D&D 含む）
+    # ファイル直指定モード（ドラッグ＆ドロップ含む）
     if (-not $PSBoundParameters.ContainsKey("Output")) {
         $firstDir = Split-Path -Parent $filesFromArgs[0]
         $Output = Join-Path $firstDir "smart_concat_v3.mp4"
