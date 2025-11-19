@@ -1,4 +1,3 @@
-[CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$InputDir = ".",
     [string]$Pattern = "*.mp4",
@@ -23,68 +22,25 @@ if (-not (Test-Path $Analyzer)) {
 
 $python = "python"
 
-# 位置引数（D&D / ファイル直指定）は $args にそのまま入ってくる前提
-$filesFromArgs = @()
-if ($args -and $args.Count -gt 0) {
-    foreach ($a in $args) {
-        try {
-            $resolved = Resolve-Path $a -ErrorAction Stop
-            $filesFromArgs += $resolved.ProviderPath
-        }
-        catch {
-            Write-Error "入力ファイルが見つかりません: $a"
-            exit 1
-        }
-    }
+$argsList = @(
+    $Analyzer,
+    "--input-dir", $InputDir,
+    "--pattern", $Pattern,
+    "--output", $Output,
+    "--crf", $Crf,
+    "--preset", $Preset,
+    "--width", $Width,
+    "--height", $Height
+)
+
+if ($Recursive.IsPresent) {
+    $argsList += "--recursive"
+}
+if ($DryRun.IsPresent) {
+    $argsList += "--dry-run"
 }
 
-if ($filesFromArgs.Count -gt 0) {
-    # ファイル直指定モード（ドラッグ＆ドロップ含む）
-    if (-not $PSBoundParameters.ContainsKey("Output")) {
-        $firstDir = Split-Path -Parent $filesFromArgs[0]
-        $Output = Join-Path $firstDir "smart_concat_v3.mp4"
-    }
-
-    $argsList = @($Analyzer)
-
-    foreach ($f in $filesFromArgs) {
-        $argsList += $f
-    }
-
-    $argsList += @(
-        "--output", $Output,
-        "--crf", $Crf,
-        "--preset", $Preset,
-        "--width", $Width,
-        "--height", $Height
-    )
-
-    if ($DryRun.IsPresent) {
-        $argsList += "--dry-run"
-    }
-}
-else {
-    # 従来どおり、ディレクトリ + パターンで探索
-    $argsList = @(
-        $Analyzer,
-        "--input-dir", $InputDir,
-        "--pattern", $Pattern,
-        "--output", $Output,
-        "--crf", $Crf,
-        "--preset", $Preset,
-        "--width", $Width,
-        "--height", $Height
-    )
-
-    if ($Recursive.IsPresent) {
-        $argsList += "--recursive"
-    }
-    if ($DryRun.IsPresent) {
-        $argsList += "--dry-run"
-    }
-}
-
-Write-Host "Running smart_video_concat v3..." -ForegroundColor Cyan
+Write-Host "Running smart_video_concat v3 (dir/pattern mode)..." -ForegroundColor Cyan
 Write-Host $python $($argsList -join " ")
 
 $proc = Start-Process -FilePath $python -ArgumentList $argsList -NoNewWindow -PassThru -Wait
