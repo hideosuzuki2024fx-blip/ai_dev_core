@@ -41,8 +41,9 @@ def run_ffmpeg_concat_reencode_normalized(
     with open(list_path, "w", encoding="utf-8") as f:
         for p in files:
             escaped = p.replace("'", "''")
-            f.write(f"file '{escaped}'n")
+            f.write(f"file '{escaped}'\n")
 
+    # 幅・高さともに上限を設け、必ず 1920x1080 以内に収める
     vf = (
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
@@ -69,6 +70,36 @@ def run_ffmpeg_concat_reencode_normalized(
     proc = subprocess.run(cmd)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed with exit code {proc.returncode}")
+
+
+def collect_files_from_dir(input_dir: str, pattern: str, recursive: bool) -> list[str]:
+    """
+    v1/v2 と同じノリで、ディレクトリ＋パターンからファイル一覧を作る。
+    """
+    files: list[str] = []
+    suffix = pattern.replace("*", "").lower()
+
+    if recursive:
+        for root, dirs, fnames in os.walk(input_dir):
+            for name in fnames:
+                path = os.path.join(root, name)
+                if not os.path.isfile(path):
+                    continue
+                lname = name.lower()
+                if suffix and not lname.endswith(suffix):
+                    continue
+                files.append(path)
+    else:
+        for name in os.listdir(input_dir):
+            path = os.path.join(input_dir, name)
+            if not os.path.isfile(path):
+                continue
+            lname = name.lower()
+            if suffix and not lname.endswith(suffix):
+                continue
+            files.append(path)
+
+    return sorted(set(os.path.abspath(p) for p in files))
 
 
 def main():
@@ -135,32 +166,35 @@ def main():
 
     args = parser.parse_args()
 
-    # 入力動画の収集（v1/v2 と同様のロジック）
-    files = []
-    if args.inputs:
-        files = args.inputs
-    else:
-        suffix = args.pattern.replace("*", "").lower()
-        if args.recursive:
-            for root, dirs, fnames in os.walk(args.input_dir):
-                for name in fnames:
-                    if suffix and not name.lower().endswith(suffix):
-                        continue
-                    path = os.path.join(root, name)
-                    if os.path.isfile(path):
-                        files.append(path)
-        else:
-            for name in os.listdir(args.input_dir):
-                path = os.path.join(args.input_dir, name)
-                if not os.path.isfile(path):
-                    continue
-                if suffix and not name.lower().endswith(suffix):
-                    continue
-                files.append(path)
+    out_path = os.path.abspath(args.output)
 
-    files = sorted(set(os.path.abspath(p) for p in files))
+    # 入力動画の収集
+    if args.inputs:
+        files = [os.path.abspath(p) for p in args.inputs]
+    else:
+        files = collect_files_from_dir(args.input_dir, args.pattern, args.recursive)
+
     if not files:
         print("入力動画が見つかりませんでした。", file=sys.stderr)
+        sys.exit(1)
+
+    # smart_concat_* 系など「明らかに出力っぽいファイル」を自動スキップ
+    skip_prefixes = ("smart_concat_",)
+    filtered: list[str] = []
+    for p in files:
+        name = os.path.basename(p).lower()
+        if p == out_path:
+            print(f"スキップ (出力ファイルと同一): {p}")
+            continue
+        if name.startswith(skip_prefixes):
+            print(f"スキップ (smart_concat_* 系と判定): {p}")
+            continue
+        filtered.append(p)
+
+    files = filtered
+
+    if not files:
+        print("有効な入力動画がありません（smart_concat_* 等を除外した結果、0 件になりました）。", file=sys.stderr)
         sys.exit(1)
 
     print("検出された動画ファイル (v3):")
@@ -170,7 +204,7 @@ def main():
     # 特徴抽出
     features = []
     for p in files:
-        print(f"n特徴抽出中 (v3): {p}")
+        print(f"\n特徴抽出中 (v3): {p}")
         start_feat, end_feat = extract_features(p)
         features.append({"path": p, "start": start_feat, "end": end_feat})
 
@@ -178,15 +212,14 @@ def main():
     order = build_order(features)
     ordered_files = [features[i]["path"] for i in order]
 
-    print("n推定された連結順 (先頭 -> 末尾) [v3]:")
+    print("\n推定された連結順 (先頭 -> 末尾) [v3]:")
     for i, p in enumerate(ordered_files):
         print(f"{i+1:2d}. {p}")
 
     if args.dry_run:
-        print("n--dry-run 指定のため、ffmpeg による連結は行いません。")
+        print("\n--dry-run 指定のため、ffmpeg による連結は行いません。")
         return
 
-    out_path = os.path.abspath(args.output)
     workdir = os.path.dirname(out_path) or "."
     os.makedirs(workdir, exist_ok=True)
 
@@ -199,9 +232,8 @@ def main():
         width=args.width,
         height=args.height,
     )
-    print("n出力ファイル (v3):", out_path)
+    print("\n出力ファイル (v3):", out_path)
 
 
 if __name__ == "__main__":
     main()
-
