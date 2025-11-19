@@ -1,7 +1,4 @@
 param(
-    [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
-    [string[]]$InputFiles,
-
     [string]$InputDir = ".",
     [string]$Pattern = "*.mp4",
     [string]$Output = "out\smart_concat_v3.mp4",
@@ -25,19 +22,32 @@ if (-not (Test-Path $Analyzer)) {
 
 $python = "python"
 
-# 入力モード判定: InputFiles があれば「ファイル直指定 / D&D」扱い
-if ($InputFiles -and $InputFiles.Count -gt 0) {
-    # 出力パスが明示されていない場合は、最初のファイルと同じフォルダに smart_concat_v3.mp4 を作る
+# 位置引数（D&D / ファイル直指定）をそのまま拾う
+$filesFromArgs = @()
+if ($args -and $args.Count -gt 0) {
+    foreach ($a in $args) {
+        try {
+            $resolved = Resolve-Path $a -ErrorAction Stop
+            $filesFromArgs += $resolved.ProviderPath
+        }
+        catch {
+            Write-Error "入力ファイルが見つかりません: $a"
+            exit 1
+        }
+    }
+}
+
+if ($filesFromArgs.Count -gt 0) {
+    # ファイル直指定モード（D&D 含む）
     if (-not $PSBoundParameters.ContainsKey("Output")) {
-        $firstDir = Split-Path -Parent (Resolve-Path $InputFiles[0])
+        $firstDir = Split-Path -Parent $filesFromArgs[0]
         $Output = Join-Path $firstDir "smart_concat_v3.mp4"
     }
 
     $argsList = @($Analyzer)
 
-    foreach ($f in $InputFiles) {
-        $resolved = Resolve-Path $f
-        $argsList += $resolved
+    foreach ($f in $filesFromArgs) {
+        $argsList += $f
     }
 
     $argsList += @(
