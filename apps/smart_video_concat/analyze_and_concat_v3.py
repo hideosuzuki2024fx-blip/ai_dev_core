@@ -41,10 +41,10 @@ def run_ffmpeg_concat_reencode_normalized(
     with open(list_path, "w", encoding="utf-8") as f:
         for p in files:
             escaped = p.replace("'", "''")
-            f.write(f"file '{escaped}'\n")
+            f.write(f"file '{escaped}'n")
 
     vf = (
-        f"scale={width}:-2:force_original_aspect_ratio=decrease,"
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
         "setsar=1,"
         "format=yuv420p"
@@ -170,7 +170,7 @@ def main():
     # 特徴抽出
     features = []
     for p in files:
-        print(f"\n特徴抽出中 (v3): {p}")
+        print(f"n特徴抽出中 (v3): {p}")
         start_feat, end_feat = extract_features(p)
         features.append({"path": p, "start": start_feat, "end": end_feat})
 
@@ -178,12 +178,12 @@ def main():
     order = build_order(features)
     ordered_files = [features[i]["path"] for i in order]
 
-    print("\n推定された連結順 (先頭 -> 末尾) [v3]:")
+    print("n推定された連結順 (先頭 -> 末尾) [v3]:")
     for i, p in enumerate(ordered_files):
         print(f"{i+1:2d}. {p}")
 
     if args.dry_run:
-        print("\n--dry-run 指定のため、ffmpeg による連結は行いません。")
+        print("n--dry-run 指定のため、ffmpeg による連結は行いません。")
         return
 
     out_path = os.path.abspath(args.output)
@@ -199,8 +199,9 @@ def main():
         width=args.width,
         height=args.height,
     )
-    print("\n出力ファイル (v3):", out_path)
+    print("n出力ファイル (v3):", out_path)
 
 
 if __name__ == "__main__":
     main()
+
