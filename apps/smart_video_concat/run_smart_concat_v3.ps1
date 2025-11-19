@@ -1,4 +1,7 @@
 param(
+    [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
+    [string[]]$InputFiles,
+
     [string]$InputDir = ".",
     [string]$Pattern = "*.mp4",
     [string]$Output = "out\smart_concat_v3.mp4",
@@ -7,9 +10,7 @@ param(
     [int]$Crf = 20,
     [string]$Preset = "veryfast",
     [int]$Width = 1920,
-    [int]$Height = 1080,
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$InputFiles
+    [int]$Height = 1080
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,7 +35,6 @@ if ($InputFiles -and $InputFiles.Count -gt 0) {
 
     $argsList = @($Analyzer)
 
-    # 直接指定されたファイルをそのまま Python 側の位置引数として渡す
     foreach ($f in $InputFiles) {
         $resolved = Resolve-Path $f
         $argsList += $resolved
