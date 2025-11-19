@@ -7,7 +7,9 @@ param(
     [int]$Crf = 20,
     [string]$Preset = "veryfast",
     [int]$Width = 1920,
-    [int]$Height = 1080
+    [int]$Height = 1080,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$InputFiles
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,22 +24,53 @@ if (-not (Test-Path $Analyzer)) {
 
 $python = "python"
 
-$argsList = @(
-    $Analyzer,
-    "--input-dir", $InputDir,
-    "--pattern", $Pattern,
-    "--output", $Output,
-    "--crf", $Crf,
-    "--preset", $Preset,
-    "--width", $Width,
-    "--height", $Height
-)
+# 入力モード判定: InputFiles があれば「ファイル直指定 / D&D」扱い
+if ($InputFiles -and $InputFiles.Count -gt 0) {
+    # 出力パスが明示されていない場合は、最初のファイルと同じフォルダに smart_concat_v3.mp4 を作る
+    if (-not $PSBoundParameters.ContainsKey("Output")) {
+        $firstDir = Split-Path -Parent (Resolve-Path $InputFiles[0])
+        $Output = Join-Path $firstDir "smart_concat_v3.mp4"
+    }
 
-if ($Recursive.IsPresent) {
-    $argsList += "--recursive"
+    $argsList = @($Analyzer)
+
+    # 直接指定されたファイルをそのまま Python 側の位置引数として渡す
+    foreach ($f in $InputFiles) {
+        $resolved = Resolve-Path $f
+        $argsList += $resolved
+    }
+
+    $argsList += @(
+        "--output", $Output,
+        "--crf", $Crf,
+        "--preset", $Preset,
+        "--width", $Width,
+        "--height", $Height
+    )
+
+    if ($DryRun.IsPresent) {
+        $argsList += "--dry-run"
+    }
 }
-if ($DryRun.IsPresent) {
-    $argsList += "--dry-run"
+else {
+    # 従来どおり、ディレクトリ + パターンで探索
+    $argsList = @(
+        $Analyzer,
+        "--input-dir", $InputDir,
+        "--pattern", $Pattern,
+        "--output", $Output,
+        "--crf", $Crf,
+        "--preset", $Preset,
+        "--width", $Width,
+        "--height", $Height
+    )
+
+    if ($Recursive.IsPresent) {
+        $argsList += "--recursive"
+    }
+    if ($DryRun.IsPresent) {
+        $argsList += "--dry-run"
+    }
 }
 
 Write-Host "Running smart_video_concat v3..." -ForegroundColor Cyan
