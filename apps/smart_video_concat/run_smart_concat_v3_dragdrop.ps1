@@ -22,40 +22,40 @@ if (-not $args -or $args.Count -lt 1) {
     exit 1
 }
 
-# ----- ここがポイント：$args 全体から .mp4 パスを regex で抜き出す -----
-# 例:
-#   D:\clips\test\0 (6).mp4 D:\clips\test\0 (54).mp4 ...
-#   "D:\clips\test\0 (6).mp4" "D:\clips\test\0 (54).mp4" ...
-#
-# をまとめて 1 本の文字列にして、以下のようなパターンで抽出:
-#   - "..." で囲まれた .mp4
-#   - そうでなければ、空白以外の .mp4
-$raw = [string]::Join(' ', $args)
+# ----- トークンを順に結合して、実在パスになったら 1 ファイルとして確定する -----
+$rawTokens    = @($args)
+$files        = @()
+$currentParts = @()
 
-$pattern = '"[^"]+\.mp4"|[^" ]+\.mp4'
-$matches = [System.Text.RegularExpressions.Regex]::Matches($raw, $pattern)
+foreach ($t in $rawTokens) {
+    if ([string]::IsNullOrWhiteSpace($t)) {
+        continue
+    }
 
-if ($matches.Count -lt 1) {
-    Write-Error "引数から .mp4 ファイルパスを抽出できませんでした。"
-    Write-Host "raw args string: $raw"
+    $currentParts += $t
+    $candidate = [string]::Join(' ', $currentParts)
+
+    if (Test-Path -LiteralPath $candidate) {
+        try {
+            $resolved = Resolve-Path -LiteralPath $candidate -ErrorAction Stop
+            $files += $resolved.ProviderPath
+            $currentParts = @()
+        }
+        catch {
+            Write-Error "入力ファイルの解決に失敗しました: $candidate"
+            exit 1
+        }
+    }
+}
+
+if ($currentParts.Count -gt 0) {
+    $rest = [string]::Join(' ', $currentParts)
+    Write-Error "ファイルパスを正しく復元できませんでした: '$rest'"
     exit 1
 }
 
-$files = @()
-foreach ($m in $matches) {
-    $path = $m.Value.Trim('"')
-    try {
-        $resolved = Resolve-Path $path -ErrorAction Stop
-        $files += $resolved.ProviderPath
-    }
-    catch {
-        Write-Error "入力ファイルが見つかりません: $path"
-        exit 1
-    }
-}
-
 if ($files.Count -lt 1) {
-    Write-Error "有効な .mp4 入力ファイルが見つかりませんでした。"
+    Write-Error "有効な入力ファイルが見つかりませんでした。"
     exit 1
 }
 
