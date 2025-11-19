@@ -26,6 +26,8 @@ def run_tool():
 
     if mode == "v2":
         analyzer_name = "analyze_and_concat_v2.py"
+    elif mode == "v3":
+        analyzer_name = "analyze_and_concat_v3.py"
     else:
         analyzer_name = "analyze_and_concat.py"
 
@@ -47,8 +49,8 @@ def run_tool():
     if dryrun_var.get():
         args.append("--dry-run")
 
-    # v2 の場合だけ CRF / preset を渡す
-    if mode == "v2":
+    # v2 / v3 の場合だけ CRF / preset を渡す
+    if mode in ("v2", "v3"):
         crf_str = crf_var.get().strip()
         preset_str = preset_var.get().strip()
         if crf_str:
@@ -57,7 +59,16 @@ def run_tool():
             args.extend(["--preset", preset_str])
 
     text_log.delete("1.0", tk.END)
-    mode_label = "v2 (reencode)" if mode == "v2" else "v1 (copy)"
+
+    if mode == "v1":
+        mode_label = "v1 (copy)"
+    elif mode == "v2":
+        mode_label = "v2 (reencode)"
+    elif mode == "v3":
+        mode_label = "v3 (reencode + 16:9)"
+    else:
+        mode_label = mode
+
     text_log.insert(tk.END, f"モード: {mode_label}\\n")
     text_log.insert(tk.END, "コマンド実行中:\\n" + " ".join(args) + "\\n\\n")
     root.update_idletasks()
@@ -114,7 +125,7 @@ pattern_var = tk.StringVar(value="*.mp4")
 output_var = tk.StringVar()
 recursive_var = tk.BooleanVar(value=False)
 dryrun_var = tk.BooleanVar(value=False)
-mode_var = tk.StringVar(value="v1")  # "v1" or "v2"
+mode_var = tk.StringVar(value="v1")  # "v1" / "v2" / "v3"
 crf_var = tk.StringVar(value="20")
 preset_var = tk.StringVar(value="veryfast")
 
@@ -123,19 +134,20 @@ frame.pack(fill=tk.BOTH, expand=True)
 
 row = 0
 
-# モード選択 (v1 / v2)
+# モード選択 (v1 / v2 / v3)
 tk.Label(frame, text="モード:").grid(row=row, column=0, sticky="w")
 mode_frame = tk.Frame(frame)
 mode_frame.grid(row=row, column=1, columnspan=2, sticky="w")
 tk.Radiobutton(mode_frame, text="v1 (高速 / 非再エンコード)", variable=mode_var, value="v1").pack(side=tk.LEFT)
 tk.Radiobutton(mode_frame, text="v2 (再エンコード / 互換性重視)", variable=mode_var, value="v2").pack(side=tk.LEFT, padx=(10, 0))
+tk.Radiobutton(mode_frame, text="v3 (再エンコード + 16:9 正規化)", variable=mode_var, value="v3").pack(side=tk.LEFT, padx=(10, 0))
 
 row += 1
 
 # 入力ディレクトリ
 tk.Label(frame, text="入力ディレクトリ:").grid(row=row, column=0, sticky="w")
 tk.Entry(frame, textvariable=input_dir_var, width=50).grid(row=row, column=1, sticky="we")
-tk.Button(frame, text="参照...", command=browse_input).grid(row=row, column=2, padx=(5, 0))
+tk.Button(frame, text="参照.", command=browse_input).grid(row=row, column=2, padx=(5, 0))
 
 row += 1
 
@@ -148,7 +160,7 @@ row += 1
 # 出力ファイル
 tk.Label(frame, text="出力ファイル:").grid(row=row, column=0, sticky="w")
 tk.Entry(frame, textvariable=output_var, width=50).grid(row=row, column=1, sticky="we")
-tk.Button(frame, text="参照...", command=browse_output).grid(row=row, column=2, padx=(5, 0))
+tk.Button(frame, text="参照.", command=browse_output).grid(row=row, column=2, padx=(5, 0))
 
 row += 1
 
@@ -160,10 +172,10 @@ tk.Checkbutton(opt_frame, text="Dry run (連結を実行しない)", variable=dr
 
 row += 1
 
-# v2 用 CRF / preset
+# v2 / v3 用 CRF / preset
 crf_frame = tk.Frame(frame)
 crf_frame.grid(row=row, column=0, columnspan=3, pady=(5, 5), sticky="w")
-tk.Label(crf_frame, text="v2 用 CRF:").pack(side=tk.LEFT)
+tk.Label(crf_frame, text="v2/v3 用 CRF:").pack(side=tk.LEFT)
 tk.Entry(crf_frame, textvariable=crf_var, width=6).pack(side=tk.LEFT, padx=(2, 10))
 tk.Label(crf_frame, text="preset:").pack(side=tk.LEFT)
 tk.Entry(crf_frame, textvariable=preset_var, width=10).pack(side=tk.LEFT, padx=(2, 10))
