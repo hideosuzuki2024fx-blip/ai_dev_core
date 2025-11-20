@@ -20,20 +20,20 @@ class SmartVideoConcatV3GUI(tk.Tk):
       1. ファイルを追加（追加順で一覧表示）
       2. 「自動並び替え (v3 推奨順)」ボタンで、v3 ロジックに基づく推奨順に並び替え
       3. 必要に応じて「上へ」「下へ」で手動微調整
-      4. 必要に応じて「選択の後に黒トランジション」を押して、トランジションを入れたい境界を指定
+      4. 必要に応じて「選択の後にトランジション」を押して、トランジションを入れたい境界を指定
       5. 「連結を実行」で、画面リストに表示されている順とトランジション指定に従って連結
 
     トランジション仕様:
       - 2 クリップ構成かつ 1 箇所のトランジション指定（1 番目の後）の場合:
-          -> まずクロスフェード (xfade + acrossfade) で連結を試みる。
-             * クロスフェード時間は最大 1.0 秒（短いクリップでは自動調整）。
-             * 失敗した場合は通常連結（黒トランジション含む）にフォールバック。
+          -> まずクロスフェードで連結を試みる。
+             * 映像のみのクリップ: 映像だけ xfade。
+             * 映像+音声クリップ: xfade + acrossfade（映像・音声ともクロスフェード）。
+             * クロスフェードに失敗した場合は、通常連結（黒トランジション含む）にフォールバック。
       - それ以外（3 本以上、複数指定など）の場合:
           -> 従来通り、指定された位置に黒 1 秒クリップを挿入する concat 連結。
 
     注意:
       - クロスフェードは現時点では「2 本のクリップ＋1 箇所のトランジション指定」のケースにのみ適用。
-      - 音声も acrossfade でクロスフェードを試みるが、失敗した場合はエラーとして扱う。
     """
 
     def __init__(self) -> None:
@@ -445,6 +445,42 @@ class SmartVideoConcatV3GUI(tk.Tk):
             self._log("ffprobe の出力から長さを解釈できませんでした。", error=True)
             return None
 
+    def _has_audio_stream(self, path: Path) -> bool:
+        """
+        指定ファイルに音声ストリームが存在するかを ffprobe で判定します。
+        """
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=index",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ]
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except FileNotFoundError:
+            self._log("ffprobe が見つからないため、音声ストリームの有無を判定できません。", error=True)
+            return False
+
+        if proc.returncode != 0:
+            self._log("ffprobe による音声ストリーム判定に失敗しました。", error=True)
+            self._log(proc.stdout)
+            self._log(proc.stderr)
+            return False
+
+        has_audio = bool(proc.stdout.strip())
+        return has_audio
+
     # ---------------- クロスフェード（2 クリップ専用） ----------------
 
     def _run_ffmpeg_crossfade_two(
@@ -457,7 +493,9 @@ class SmartVideoConcatV3GUI(tk.Tk):
         height: int,
     ) -> bool:
         """
-        2 本のクリップ間をクロスフェード (xfade + acrossfade) で連結します。
+        2 本のクリップ間をクロスフェードで連結します。
+        - 映像のみのとき: xfade のみ。
+        - 映像+音声のとき: xfade + acrossfade。
         - 成功時: True を返し、messagebox で完了通知。
         - 失敗時: False を返す（呼び出し側でフォールバック）。
         """
@@ -486,10 +524,15 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self._log(f"clip0 長さ: {d0:.3f} sec, clip1 長さ: {d1:.3f} sec")
         self._log(f"クロスフェード時間: {t:.3f} sec, offset: {offset:.3f} sec")
 
-        # filter_complex 構築
+        # 音声ストリーム有無を判定
+        has_a0 = self._has_audio_stream(clip0)
+        has_a1 = self._has_audio_stream(clip1)
+        self._log(f"clip0 audio: {has_a0}, clip1 audio: {has_a1}")
+
         t_str = f"{t:.3f}"
         offset_str = f"{offset:.3f}"
 
+        # 映像のスケール・パディング部分
         vf_chain = (
             f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
@@ -499,45 +542,75 @@ class SmartVideoConcatV3GUI(tk.Tk):
             "setpts=PTS-STARTPTS[v1];"
         )
 
-        af_chain = (
-            "[0:a]asetpts=PTS-STARTPTS[a0];"
-            "[1:a]asetpts=PTS-STARTPTS[a1];"
-        )
+        # 音声あり両方 → xfade+acrossfade
+        if has_a0 and has_a1:
+            af_chain = (
+                "[0:a]asetpts=PTS-STARTPTS[a0];"
+                "[1:a]asetpts=PTS-STARTPTS[a1];"
+            )
+            xf_chain = (
+                f"[v0][v1]xfade=transition=fade:duration={t_str}:offset={offset_str}[v01];"
+                f"[a0][a1]acrossfade=d={t_str}[a01]"
+            )
+            filter_complex = vf_chain + af_chain + xf_chain
 
-        xf_chain = (
-            f"[v0][v1]xfade=transition=fade:duration={t_str}:offset={offset_str}[v01];"
-            f"[a0][a1]acrossfade=d={t_str}[a01]"
-        )
+            cmd = [
+                FFMPEG_CMD,
+                "-y",
+                "-i",
+                str(clip0),
+                "-i",
+                str(clip1),
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[v01]",
+                "-map",
+                "[a01]",
+                "-c:v",
+                "libx264",
+                "-preset",
+                preset,
+                "-crf",
+                str(crf),
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ]
+        else:
+            # 映像のみクロスフェード（音声はなし）
+            self._log("音声ストリームが揃っていないため、映像のみクロスフェードを行います。")
+            xf_chain = (
+                f"[v0][v1]xfade=transition=fade:duration={t_str}:offset={offset_str}[v01]"
+            )
+            filter_complex = vf_chain + xf_chain
 
-        filter_complex = vf_chain + af_chain + xf_chain
-
-        cmd = [
-            FFMPEG_CMD,
-            "-y",
-            "-i",
-            str(clip0),
-            "-i",
-            str(clip1),
-            "-filter_complex",
-            filter_complex,
-            "-map",
-            "[v01]",
-            "-map",
-            "[a01]",
-            "-c:v",
-            "libx264",
-            "-preset",
-            preset,
-            "-crf",
-            str(crf),
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
+            cmd = [
+                FFMPEG_CMD,
+                "-y",
+                "-i",
+                str(clip0),
+                "-i",
+                str(clip1),
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[v01]",
+                "-c:v",
+                "libx264",
+                "-preset",
+                preset,
+                "-crf",
+                str(crf),
+                "-an",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ]
 
         self._log("ffmpeg クロスフェードコマンド:")
         self._log(" ".join(cmd))
@@ -635,7 +708,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
     ) -> None:
         """
         連結実行本体。
-        1) 2 本構成 + {0} のトランジション指定 → クロスフェードを試行。
+        1) 2 本構成 + {0} のトランジション指定 → クロスフェードを試す。
         2) それ以外 → 黒クリップ挿入（必要なら）＋ concat デマルチプレクサで通常連結。
         """
         # 1) 2 本構成 + 1 箇所指定の場合、クロスフェードを試す
