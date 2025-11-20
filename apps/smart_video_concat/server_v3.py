@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 from flask import Flask, jsonify, request, send_file
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
