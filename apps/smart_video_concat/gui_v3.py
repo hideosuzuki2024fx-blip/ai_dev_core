@@ -11,35 +11,41 @@ import analyze_and_concat_v3 as v3
 FFMPEG_CMD = "ffmpeg"
 TRANSITION_CLIP_NAME = "transition_black_1s.mp4"
 
+# xfade がサポートしている代表的なトランジション
+XF_TRANSITIONS = [
+    "fade",
+    "fadeblack",
+    "fadewhite",
+    "wipeleft",
+    "wiperight",
+    "wipeup",
+    "wipedown",
+    "slideleft",
+    "slideright",
+    "slideup",
+    "slidedown",
+    "circleopen",
+    "circleclose",
+    "vertopen",
+    "vertclose",
+    "horzopen",
+    "horzclose",
+    "radial",
+    "smoothleft",
+    "smoothright",
+    "smoothup",
+    "smoothdown",
+]
+
 
 class SmartVideoConcatV3GUI(tk.Tk):
-    """
-    smart_video_concat v3 専用の簡易 GUI。
-
-    フロー:
-      1. ファイルを追加（追加順で一覧表示）
-      2. 「自動並び替え (v3 推奨順)」ボタンで、v3 ロジックに基づく推奨順に並び替え
-      3. 必要に応じて「上へ」「下へ」で手動微調整
-      4. 必要に応じて「選択の後にトランジション」を押して、黒トランジションを入れたい境界を指定
-      5. 連結方法を選択:
-         - 「連結を実行（表示順のまま）」:
-             * 2 本 + 1 箇所指定 (1 本目の後) のとき → クロスフェード優先
-             * それ以外 → 黒 1 秒クリップ挿入 + concat
-         - 「全区間クロスフェードで連結」:
-             * 現在の表示順の全ての境界をクロスフェードでつなぐ
-             * 音声は「全クリップに音声がある場合のみ」acrossfade、それ以外は映像のみクロスフェード
-    """
-
     def __init__(self) -> None:
         super().__init__()
         self.title("smart_video_concat v3 GUI")
-        self.geometry("860x620")
+        self.geometry("880x640")
 
-        self.file_listbox: tk.Listbox
         self.files: list[Path] = []
-
-        # どのクリップの「直後」にトランジションを挿入するかを 0 始まりインデックスで保持
-        # 例: {0, 2} なら 1 本目の後と 3 本目の後にトランジション
+        # 0 始まりインデックス: 0 → 1 本目の「直後」
         self.transition_after_indices: set[int] = set()
 
         self.output_path_var = tk.StringVar()
@@ -47,12 +53,14 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self.width_var = tk.StringVar(value="1920")
         self.height_var = tk.StringVar(value="1080")
         self.preset_var = tk.StringVar(value="veryfast")
+        self.transition_type_var = tk.StringVar(value="fade")
 
+        self.file_listbox: tk.Listbox
         self.log_text: tk.Text
 
         self._build_ui()
 
-    # ---------------- UI 構築 ----------------
+    # ================= UI =================
 
     def _build_ui(self) -> None:
         frame_top = ttk.LabelFrame(self, text="入力ファイル一覧（現在の表示順 = 連結順）")
@@ -69,79 +77,77 @@ class SmartVideoConcatV3GUI(tk.Tk):
             height=12,
         )
         scrollbar.config(command=self.file_listbox.yview)
-
         self.file_listbox.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
         right = ttk.Frame(frame_top)
         right.pack(side="left", fill="y", padx=(4, 8), pady=8)
 
-        btn_add = ttk.Button(right, text="追加...", command=self.on_add_files)
-        btn_remove = ttk.Button(right, text="選択削除", command=self.on_remove_selected)
-        btn_clear = ttk.Button(right, text="全クリア", command=self.on_clear_files)
-        btn_up = ttk.Button(right, text="上へ (表示順)", command=self.on_move_up)
-        btn_down = ttk.Button(right, text="下へ (表示順)", command=self.on_move_down)
+        ttk.Button(right, text="追加...", command=self.on_add_files).pack(fill="x", pady=2)
+        ttk.Button(right, text="選択削除", command=self.on_remove_selected).pack(fill="x", pady=2)
+        ttk.Button(right, text="全クリア", command=self.on_clear_files).pack(fill="x", pady=2)
+        ttk.Button(right, text="上へ (表示順)", command=self.on_move_up).pack(fill="x", pady=2)
+        ttk.Button(right, text="下へ (表示順)", command=self.on_move_down).pack(fill="x", pady=2)
 
         ttk.Separator(right, orient="horizontal").pack(fill="x", pady=4)
 
-        btn_auto_tr = ttk.Button(
+        ttk.Button(
             right,
             text="選択の後に\nトランジション(黒)",
             command=self.on_add_transition_after_selected,
-        )
-        btn_clear_tr = ttk.Button(
+        ).pack(fill="x", pady=2)
+        ttk.Button(
             right,
             text="トランジション\n全クリア",
             command=self.on_clear_transitions,
-        )
+        ).pack(fill="x", pady=2)
 
-        for w in (btn_add, btn_remove, btn_clear, btn_up, btn_down, btn_auto_tr, btn_clear_tr):
-            w.pack(fill="x", pady=2)
-
-        frame_mid = ttk.LabelFrame(self, text="エンコード設定（v3 相当）")
+        frame_mid = ttk.LabelFrame(self, text="エンコード / トランジション設定")
         frame_mid.pack(fill="x", padx=10, pady=4, ipady=4)
 
         grid = ttk.Frame(frame_mid)
         grid.pack(fill="x", padx=8, pady=4)
 
+        # 1 行目: CRF / preset
         ttk.Label(grid, text="CRF").grid(row=0, column=0, sticky="w", padx=2, pady=2)
-        crf_entry = ttk.Entry(grid, textvariable=self.crf_var, width=8)
-        crf_entry.grid(row=0, column=1, sticky="w", padx=2, pady=2)
-
+        ttk.Entry(grid, textvariable=self.crf_var, width=8).grid(row=0, column=1, sticky="w", padx=2, pady=2)
         ttk.Label(grid, text="preset").grid(row=0, column=2, sticky="w", padx=12, pady=2)
         preset_combo = ttk.Combobox(
             grid,
             textvariable=self.preset_var,
-            values=[
-                "ultrafast",
-                "superfast",
-                "veryfast",
-                "faster",
-                "fast",
-                "medium",
-            ],
+            values=["ultrafast", "superfast", "veryfast", "faster", "fast", "medium"],
             width=12,
             state="readonly",
         )
         preset_combo.grid(row=0, column=3, sticky="w", padx=2, pady=2)
         preset_combo.current(2)
 
+        # 2 行目: width / height
         ttk.Label(grid, text="幅 (width)").grid(row=1, column=0, sticky="w", padx=2, pady=2)
-        width_entry = ttk.Entry(grid, textvariable=self.width_var, width=8)
-        width_entry.grid(row=1, column=1, sticky="w", padx=2, pady=2)
-
+        ttk.Entry(grid, textvariable=self.width_var, width=8).grid(row=1, column=1, sticky="w", padx=2, pady=2)
         ttk.Label(grid, text="高さ (height)").grid(row=1, column=2, sticky="w", padx=12, pady=2)
-        height_entry = ttk.Entry(grid, textvariable=self.height_var, width=8)
-        height_entry.grid(row=1, column=3, sticky="w", padx=2, pady=2)
+        ttk.Entry(grid, textvariable=self.height_var, width=8).grid(row=1, column=3, sticky="w", padx=2, pady=2)
 
+        # 3 行目: トランジション種別 (xfade)
+        ttk.Label(grid, text="トランジション種別 (xfade)").grid(row=2, column=0, sticky="w", padx=2, pady=2)
+        tr_combo = ttk.Combobox(
+            grid,
+            textvariable=self.transition_type_var,
+            values=XF_TRANSITIONS,
+            width=18,
+            state="readonly",
+        )
+        tr_combo.grid(row=2, column=1, columnspan=3, sticky="w", padx=2, pady=2)
+        tr_combo.current(0)
+
+        # 出力パス
         frame_out = ttk.Frame(frame_mid)
         frame_out.pack(fill="x", padx=8, pady=(2, 6))
-
         ttk.Label(frame_out, text="出力ファイル").pack(side="left")
-        entry_out = ttk.Entry(frame_out, textvariable=self.output_path_var)
-        entry_out.pack(side="left", fill="x", expand=True, padx=6)
-        btn_out = ttk.Button(frame_out, text="参照...", command=self.on_browse_output)
-        btn_out.pack(side="left")
+        ttk.Entry(frame_out, textvariable=self.output_path_var).pack(
+            side="left", fill="x", expand=True, padx=6
+        )
+        ttk.Button(frame_out, text="参照...", command=self.on_browse_output).pack(side="left")
 
         frame_bottom = ttk.Frame(self)
         frame_bottom.pack(fill="both", expand=False, padx=10, pady=(4, 10))
@@ -149,39 +155,31 @@ class SmartVideoConcatV3GUI(tk.Tk):
         btn_row = ttk.Frame(frame_bottom)
         btn_row.pack(fill="x", pady=(0, 6))
 
-        btn_auto_order = ttk.Button(
+        ttk.Button(
             btn_row,
             text="自動並び替え (v3 推奨順)",
             command=self.on_auto_order_v3,
-        )
-        btn_auto_order.pack(side="left")
+        ).pack(side="left")
 
-        btn_full_xfade = ttk.Button(
+        ttk.Button(
             btn_row,
             text="全区間クロスフェードで連結",
             command=self.on_run_full_crossfade,
-        )
-        btn_full_xfade.pack(side="left", padx=8)
+        ).pack(side="left", padx=8)
 
-        btn_run = ttk.Button(
+        ttk.Button(
             btn_row,
             text="連結を実行（表示順のまま）",
             command=self.on_run_concat,
-        )
-        btn_run.pack(side="right")
+        ).pack(side="right")
 
-        self.log_text = tk.Text(
-            frame_bottom,
-            height=12,
-            wrap="word",
-        )
+        self.log_text = tk.Text(frame_bottom, height=12, wrap="word")
         self.log_text.pack(fill="both", expand=True)
         self._log("smart_video_concat v3 GUI を起動しました。")
-        self._log("現在リストに表示されている順番が、そのまま連結順になります。")
-        self._log("・「連結を実行（表示順のまま）」: 黒トランジション + 通常 concat（2 本 + 1 箇所指定のときはクロスフェード）")
-        self._log("・「全区間クロスフェードで連結」: すべての境界をクロスフェードで連結（新機能）")
+        self._log("・通常ボタン: 2 本 + 1 箇所指定ならクロスフェード、それ以外は黒トランジション + concat。")
+        self._log("・全区間クロスフェード: すべての境界を xfade（選択した transition 種別）で連結します。")
 
-    # ---------------- ファイルリスト操作 ----------------
+    # ================= ファイルリスト操作 =================
 
     def _refresh_listbox(self) -> None:
         self.file_listbox.delete(0, tk.END)
@@ -191,7 +189,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
     def _invalidate_transitions_due_to_reorder(self) -> None:
         if self.transition_after_indices:
             self.transition_after_indices.clear()
-            self._log("ファイル順が変更されたため、トランジション指定をリセットしました。")
+            self._log("順序変更のため、トランジション指定をリセットしました。")
 
     def on_add_files(self) -> None:
         paths = filedialog.askopenfilenames(
@@ -209,14 +207,13 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         if self.files and not self.output_path_var.get():
             first_dir = self.files[0].parent
-            default_out = first_dir / "smart_concat_v3_gui.mp4"
-            self.output_path_var.set(str(default_out))
+            self.output_path_var.set(str(first_dir / "smart_concat_v3_gui.mp4"))
 
     def on_remove_selected(self) -> None:
-        selection = list(self.file_listbox.curselection())
-        if not selection:
+        sel = list(self.file_listbox.curselection())
+        if not sel:
             return
-        for idx in reversed(selection):
+        for idx in reversed(sel):
             if 0 <= idx < len(self.files):
                 self.files.pop(idx)
         self._refresh_listbox()
@@ -229,43 +226,40 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self.files.clear()
         self._refresh_listbox()
         self.transition_after_indices.clear()
-        self._log("ファイル一覧およびトランジション指定をクリアしました。")
+        self._log("ファイルとトランジション指定をすべてクリアしました。")
 
     def on_move_up(self) -> None:
-        selection = list(self.file_listbox.curselection())
-        if not selection:
+        sel = list(self.file_listbox.curselection())
+        if not sel:
             return
-        for idx in selection:
+        for idx in sel:
             if idx <= 0:
                 continue
             self.files[idx - 1], self.files[idx] = self.files[idx], self.files[idx - 1]
         self._refresh_listbox()
         self.file_listbox.selection_clear(0, tk.END)
-        for idx in [max(i - 1, 0) for i in selection]:
+        for idx in [max(i - 1, 0) for i in sel]:
             self.file_listbox.selection_set(idx)
         self._invalidate_transitions_due_to_reorder()
 
     def on_move_down(self) -> None:
-        selection = list(self.file_listbox.curselection())
-        if not selection:
+        sel = list(self.file_listbox.curselection())
+        if not sel:
             return
-        for idx in reversed(selection):
+        for idx in reversed(sel):
             if idx >= len(self.files) - 1:
                 continue
             self.files[idx + 1], self.files[idx] = self.files[idx], self.files[idx + 1]
         self._refresh_listbox()
         self.file_listbox.selection_clear(0, tk.END)
-        for idx in [min(i + 1, len(self.files) - 1) for i in selection]:
+        for idx in [min(i + 1, len(self.files) - 1) for i in sel]:
             self.file_listbox.selection_set(idx)
         self._invalidate_transitions_due_to_reorder()
 
-    # ---------------- 出力パス選択 ----------------
+    # ================= 出力パス =================
 
     def on_browse_output(self) -> None:
-        initialdir = None
-        if self.files:
-            initialdir = str(self.files[0].parent)
-
+        initialdir = str(self.files[0].parent) if self.files else None
         path = filedialog.asksaveasfilename(
             title="出力 mp4 ファイルを指定",
             defaultextension=".mp4",
@@ -276,65 +270,462 @@ class SmartVideoConcatV3GUI(tk.Tk):
         if path:
             self.output_path_var.set(path)
 
-    # ---------------- 自動並び替え (v3 ロジック) ----------------
+    # ================= 自動並び替え (v3) =================
 
     def on_auto_order_v3(self) -> None:
         if not self.files:
             messagebox.showwarning("警告", "自動並び替えの対象となるファイルがありません。")
             return
-
-        ordered_files = self._auto_order_v3(self.files)
-        self.files = ordered_files
+        self._log("特徴抽出と順序推定を開始します (v3)...")
+        feats: list[dict] = []
+        for p in self.files:
+            self._log(f"特徴抽出: {p}")
+            s, e = v3.extract_features(str(p))
+            feats.append({"path": p, "start": s, "end": e})
+        order = v3.build_order(feats)
+        ordered = [feats[i]["path"] for i in order]
+        self.files = ordered
         self._refresh_listbox()
         self._invalidate_transitions_due_to_reorder()
-        self._log("自動並び替え (v3 推奨順) を適用しました。")
-        self._log("必要であれば「上へ」「下へ」で微調整してから、トランジションや連結方法を選択してください。")
-
-    def _auto_order_v3(self, input_paths: list[Path]) -> list[Path]:
-        features: list[dict] = []
-        self._log("特徴抽出と順序推定を開始します (v3)...")
-        for p in input_paths:
-            self._log(f"特徴抽出 (GUI v3): {p}")
-            start_feat, end_feat = v3.extract_features(str(p))
-            features.append({"path": p, "start": start_feat, "end": end_feat})
-
-        order = v3.build_order(features)
-        ordered = [features[i]["path"] for i in order]
-
         self._log("推定された連結順 (先頭 -> 末尾):")
-        for idx, p in enumerate(ordered, start=1):
-            self._log(f"{idx:2d}. {p}")
+        for i, p in enumerate(self.files, 1):
+            self._log(f"{i:2d}. {p}")
+        self._log("自動並び替え (v3 推奨順) を適用しました。")
 
-        return ordered
-
-    # ---------------- トランジション指定（黒トランジション用） ----------------
+    # ================= トランジション指定（黒クリップ用） =================
 
     def on_add_transition_after_selected(self) -> None:
         if not self.files:
             messagebox.showwarning("警告", "トランジションを挿入する前にファイルを追加してください。")
             return
-
-        selection = list(self.file_listbox.curselection())
-        if not selection:
-            messagebox.showwarning("警告", "トランジションを挿入する位置として、少なくとも 1 行選択してください。")
+        sel = list(self.file_listbox.curselection())
+        if not sel:
+            messagebox.showwarning("警告", "少なくとも 1 行選択してください。")
             return
-
-        for idx in selection:
+        for idx in sel:
             if 0 <= idx < len(self.files):
                 self.transition_after_indices.add(idx)
-
-        self._log("以下の位置にトランジション（黒 1 秒）を挿入します（クリップ番号は 1 始まり）:")
+        self._log("黒 1 秒トランジションを挿入する位置（1 始まり）:")
         for idx in sorted(self.transition_after_indices):
             if idx < len(self.files):
-                self._log(f" - {idx + 1} 番目のクリップの直後")
+                self._log(f" - {idx + 1} 番目の直後")
 
     def on_clear_transitions(self) -> None:
         if not self.transition_after_indices:
             return
         self.transition_after_indices.clear()
-        self._log("トランジション指定をすべてクリアしました。")
+        self._log("トランジション指定を全クリアしました。")
 
-    # ---------------- 実行ロジック（通常連結ボタン） ----------------
+    # ================= ffprobe ヘルパ =================
+
+    def _probe_duration(self, path: Path) -> float | None:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ]
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except FileNotFoundError:
+            self._log("ffprobe が見つかりません。", error=True)
+            return None
+        if proc.returncode != 0:
+            self._log("ffprobe による長さ取得に失敗しました。", error=True)
+            self._log(proc.stderr)
+            return None
+        try:
+            return float(proc.stdout.strip())
+        except ValueError:
+            self._log("ffprobe 出力の解釈に失敗しました。", error=True)
+            return None
+
+    def _has_audio_stream(self, path: Path) -> bool:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            str(path),
+        ]
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except FileNotFoundError:
+            self._log("ffprobe が見つからないため音声有無を判定できません。", error=True)
+            return False
+        if proc.returncode != 0:
+            self._log("ffprobe による音声判定に失敗しました。", error=True)
+            self._log(proc.stderr)
+            return False
+        return bool(proc.stdout.strip())
+
+    # ================= 2 クリップ専用クロスフェード（通常ボタン用） =================
+
+    def _run_ffmpeg_crossfade_two(
+        self,
+        input_paths: list[Path],
+        output_path: Path,
+        crf: int,
+        preset: str,
+        width: int,
+        height: int,
+    ) -> bool:
+        if len(input_paths) != 2:
+            return False
+        clip0, clip1 = input_paths
+        self._log("2 クリップ専用クロスフェードを試みます。")
+
+        d0 = self._probe_duration(clip0)
+        d1 = self._probe_duration(clip1)
+        if d0 is None or d1 is None:
+            self._log("長さ取得に失敗したためクロスフェードをスキップします。", error=True)
+            return False
+
+        max_t = 1.0
+        t = min(max_t, d0 / 2.0, d1 / 2.0)
+        if t <= 0.1:
+            self._log("クロスフェード時間が確保できないためスキップします。", error=True)
+            return False
+        offset = max(d0 - t, 0.0)
+
+        has_a0 = self._has_audio_stream(clip0)
+        has_a1 = self._has_audio_stream(clip1)
+        tr = self.transition_type_var.get().strip() or "fade"
+        if tr not in XF_TRANSITIONS:
+            tr = "fade"
+
+        self._log(f"clip0={d0:.3f}s, clip1={d1:.3f}s, t={t:.3f}s, offset={offset:.3f}s")
+        self._log(f"audio: clip0={has_a0}, clip1={has_a1}, transition={tr}")
+
+        t_str = f"{t:.3f}"
+        offset_str = f"{offset:.3f}"
+
+        vf = (
+            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
+            "setpts=PTS-STARTPTS[v0];"
+            f"[1:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
+            "setpts=PTS-STARTPTS[v1];"
+        )
+
+        if has_a0 and has_a1:
+            af = "[0:a]asetpts=PTS-STARTPTS[a0];[1:a]asetpts=PTS-STARTPTS[a1];"
+            xf = (
+                f"[v0][v1]xfade=transition={tr}:duration={t_str}:offset={offset_str}[vxf];"
+                "[vxf]format=yuv420p[vout];"
+                f"[a0][a1]acrossfade=d={t_str}[aout]"
+            )
+            filter_complex = vf + af + xf
+            cmd = [
+                FFMPEG_CMD, "-y",
+                "-i", str(clip0),
+                "-i", str(clip1),
+                "-filter_complex", filter_complex,
+                "-map", "[vout]",
+                "-map", "[aout]",
+                "-c:v", "libx264",
+                "-preset", preset,
+                "-crf", str(crf),
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-movflags", "+faststart",
+                str(output_path),
+            ]
+        else:
+            self._log("音声ストリームが揃っていないため映像のみクロスフェードします。")
+            xf = (
+                f"[v0][v1]xfade=transition={tr}:duration={t_str}:offset={offset_str}[vxf];"
+                "[vxf]format=yuv420p[vout]"
+            )
+            filter_complex = vf + xf
+            cmd = [
+                FFMPEG_CMD, "-y",
+                "-i", str(clip0),
+                "-i", str(clip1),
+                "-filter_complex", filter_complex,
+                "-map", "[vout]",
+                "-c:v", "libx264",
+                "-preset", preset,
+                "-crf", str(crf),
+                "-pix_fmt", "yuv420p",
+                "-an",
+                "-movflags", "+faststart",
+                str(output_path),
+            ]
+
+        self._log("ffmpeg クロスフェードコマンド:")
+        self._log(" ".join(cmd))
+
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except FileNotFoundError:
+            self._log("ffmpeg が見つかりません。", error=True)
+            messagebox.showerror("エラー", "ffmpeg が見つかりませんでした。PATH を確認してください。")
+            return False
+
+        if proc.returncode != 0:
+            self._log("クロスフェードの実行に失敗しました。", error=True)
+            self._log(proc.stderr)
+            messagebox.showerror("エラー", "クロスフェードの実行に失敗しました。ログを確認してください。")
+            return False
+
+        self._log("クロスフェードが正常に完了しました。")
+        self._log(proc.stderr)
+        messagebox.showinfo("完了", f"クロスフェード連結が完了しました。\n出力: {output_path}")
+        return True
+
+    # ================= 全区間クロスフェード（N 本） =================
+
+    def _run_ffmpeg_full_crossfade_chain(
+        self,
+        input_paths: list[Path],
+        output_path: Path,
+        crf: int,
+        preset: str,
+        width: int,
+        height: int,
+        transition: str,
+    ) -> None:
+        n = len(input_paths)
+        if n < 2:
+            messagebox.showwarning("警告", "全区間クロスフェードには 2 本以上のクリップが必要です。")
+            return
+
+        # 長さ取得
+        durations: list[float] = []
+        for p in input_paths:
+            d = self._probe_duration(p)
+            if d is None:
+                self._log(f"長さ取得失敗: {p}", error=True)
+                messagebox.showerror("エラー", f"長さ取得に失敗したファイルがあります: {p}")
+                return
+            durations.append(d)
+
+        min_d = min(durations)
+        max_t = 1.0
+        t = min(max_t, min_d / 2.0)
+        if t <= 0.1:
+            self._log("クロスフェード時間が確保できないため中止します。", error=True)
+            messagebox.showerror("エラー", "クロスフェード時間を十分に確保できませんでした。")
+            return
+
+        # 累積長さ → offset 計算
+        prefix = []
+        acc = 0.0
+        for d in durations:
+            acc += d
+            prefix.append(acc)
+        offsets = []
+        for j in range(n - 1):
+            off = prefix[j] - (j + 1) * t
+            if off < 0:
+                off = 0.0
+            offsets.append(off)
+
+        self._log("全区間クロスフェード用 長さ / offset:")
+        for i, d in enumerate(durations):
+            self._log(f" clip{i}: {d:.3f}s")
+        for j, off in enumerate(offsets):
+            self._log(f" fade{j}: offset={off:.3f}s")
+
+        # 音声ストリーム確認
+        audio_flags = [self._has_audio_stream(p) for p in input_paths]
+        has_any_audio = any(audio_flags)
+        audio_all = all(audio_flags) and has_any_audio
+
+        if not has_any_audio:
+            self._log("音声ストリームなし → 映像のみクロスフェード。")
+        elif not audio_all:
+            self._log("音声ストリームが揃っていないため、全区間クロスフェードでは音声なしで出力します。", error=True)
+            self._log(f"audio flags: {audio_flags}")
+        else:
+            self._log("全クリップに音声ストリームあり → 映像 + 音声クロスフェード。")
+
+        t_str = f"{t:.3f}"
+
+        parts: list[str] = []
+
+        # 入力ごとの前処理
+        for i in range(n):
+            parts.append(
+                f"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
+                f"setpts=PTS-STARTPTS[v{i}];"
+            )
+            if audio_all:
+                parts.append(f"[{i}:a]asetpts=PTS-STARTPTS[a{i}];")
+
+        prev_v = "v0"
+        prev_a = "a0" if audio_all else None
+
+        for j in range(n - 1):
+            off_str = f"{offsets[j]:.3f}"
+            vout = f"vxf{j}"
+            parts.append(
+                f"[{prev_v}][v{j+1}]xfade=transition={transition}:duration={t_str}:offset={off_str}[{vout}];"
+            )
+            prev_v = vout
+            if audio_all and prev_a is not None:
+                aout = f"axf{j}"
+                parts.append(f"[{prev_a}][a{j+1}]acrossfade=d={t_str}[{aout}];")
+                prev_a = aout
+
+        parts.append(f"[{prev_v}]format=yuv420p[vout];")
+        aout_label = prev_a if audio_all and prev_a is not None else None
+
+        filter_complex = "".join(parts)
+
+        cmd: list[str] = [FFMPEG_CMD, "-y"]
+        for p in input_paths:
+            cmd.extend(["-i", str(p)])
+        cmd.extend(["-filter_complex", filter_complex, "-map", "[vout]"])
+        cmd.extend(["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"])
+        if aout_label is not None:
+            cmd.extend(["-map", f"[{aout_label}]", "-c:a", "aac", "-b:a", "192k"])
+        else:
+            cmd.extend(["-an"])
+        cmd.extend(["-movflags", "+faststart", str(output_path)])
+
+        self._log("ffmpeg 全区間クロスフェードコマンド:")
+        self._log(" ".join(cmd))
+
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except FileNotFoundError:
+            self._log("ffmpeg が見つかりません。", error=True)
+            messagebox.showerror("エラー", "ffmpeg が見つかりませんでした。PATH を確認してください。")
+            return
+
+        if proc.returncode != 0:
+            self._log("全区間クロスフェードの実行に失敗しました。", error=True)
+            self._log(proc.stderr)
+            messagebox.showerror("エラー", "全区間クロスフェードの実行に失敗しました。ログを確認してください。")
+            return
+
+        self._log("全区間クロスフェードが正常に完了しました。")
+        self._log(proc.stderr)
+        messagebox.showinfo("完了", f"全区間クロスフェード連結が完了しました。\n出力: {output_path}")
+
+    # ================= 黒トランジション用クリップ生成 =================
+
+    def _ensure_transition_clip(self) -> Path | None:
+        base_dir = Path(__file__).resolve().parent
+        clip_path = base_dir / TRANSITION_CLIP_NAME
+        if clip_path.exists():
+            return clip_path
+
+        self._log("黒 1 秒トランジションクリップを新規作成します。")
+        cmd = [
+            FFMPEG_CMD,
+            "-y",
+            "-f", "lavfi",
+            "-i", "color=c=black:s=1920x1080:d=1",
+            "-r", "30",
+            "-pix_fmt", "yuv420p",
+            str(clip_path),
+        ]
+        self._log(" ".join(cmd))
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except FileNotFoundError:
+            self._log("ffmpeg が見つからないため黒クリップを生成できません。", error=True)
+            messagebox.showerror("エラー", "ffmpeg が見つからないため黒クリップを生成できませんでした。")
+            return None
+        if proc.returncode != 0:
+            self._log("黒クリップ生成に失敗しました。", error=True)
+            self._log(proc.stderr)
+            messagebox.showerror("エラー", "黒クリップ生成に失敗しました。ログを確認してください。")
+            return None
+        self._log(f"黒クリップを作成しました: {clip_path}")
+        return clip_path
+
+    # ================= 通常 concat 実行 =================
+
+    def _run_ffmpeg_concat(
+        self,
+        input_paths: list[Path],
+        output_path: Path,
+        crf: int,
+        preset: str,
+        width: int,
+        height: int,
+    ) -> None:
+        # 2 本 + 1 箇所指定 (1 本目の後) → クロスフェード優先
+        if len(input_paths) == 2 and self.transition_after_indices == {0}:
+            self._log("2 本かつ 1 箇所指定なので、クロスフェードモードを優先します。")
+            if self._run_ffmpeg_crossfade_two(
+                input_paths=input_paths,
+                output_path=output_path,
+                crf=crf,
+                preset=preset,
+                width=width,
+                height=height,
+            ):
+                return
+            self._log("クロスフェード失敗のため、通常 concat にフォールバックします。", error=True)
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix="svc_v3_gui_"))
+        concat_path = tmp_dir / "concat_list_v3.txt"
+
+        trans_clip: Path | None = None
+        if self.transition_after_indices:
+            trans_clip = self._ensure_transition_clip()
+            if trans_clip is None:
+                self._log("黒クリップ準備に失敗したためトランジションなしで連結します。", error=True)
+                self.transition_after_indices.clear()
+
+        with concat_path.open("w", encoding="utf-8") as f:
+            for idx, p in enumerate(input_paths):
+                posix = p.as_posix().replace("'", "''")
+                f.write(f"file '{posix}'\n")
+                if trans_clip is not None and idx in self.transition_after_indices:
+                    t_posix = trans_clip.as_posix().replace("'", "''")
+                    f.write(f"file '{t_posix}'\n")
+
+        vf = (
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
+        )
+
+        cmd = [
+            FFMPEG_CMD,
+            "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(concat_path),
+            "-vf", vf,
+            "-c:v", "libx264",
+            "-preset", preset,
+            "-crf", str(crf),
+            "-c:a", "copy",
+            str(output_path),
+        ]
+
+        self._log("ffmpeg concat コマンド:")
+        self._log(" ".join(cmd))
+
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except FileNotFoundError:
+            self._log("ffmpeg が見つかりません。", error=True)
+            messagebox.showerror("エラー", "ffmpeg が見つかりませんでした。PATH を確認してください。")
+            return
+
+        if proc.returncode != 0:
+            self._log("ffmpeg の実行に失敗しました。", error=True)
+            self._log(proc.stderr)
+            messagebox.showerror("エラー", "ffmpeg の実行に失敗しました。ログを確認してください。")
+            return
+
+        self._log("concat 連結が完了しました。")
+        self._log(proc.stderr)
+        messagebox.showinfo("完了", f"連結が完了しました。\n出力: {output_path}")
+
+    # ================= ボタンクリック: 通常 / 全区間クロスフェード =================
 
     def on_run_concat(self) -> None:
         if not self.files:
@@ -348,36 +739,25 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         try:
             crf = int(self.crf_var.get().strip())
-        except ValueError:
-            messagebox.showwarning("警告", "CRF には整数値を入力してください。")
-            return
-
-        try:
             width = int(self.width_var.get().strip())
             height = int(self.height_var.get().strip())
         except ValueError:
-            messagebox.showwarning("警告", "幅・高さには整数値を入力してください。")
+            messagebox.showwarning("警告", "CRF / 幅 / 高さには整数を入力してください。")
             return
 
         preset = self.preset_var.get().strip() or "veryfast"
-
         output_path = Path(output_str)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._log("連結処理を開始します（通常モード／黒トランジション対応）...")
-        self._log(f"- 入力ファイル数: {len(self.files)}")
-        self._log(f"- 出力: {output_path}")
-        self._log(f"- CRF: {crf}, preset: {preset}, size: {width}x{height}")
+        self._log("通常モードで連結を開始します。")
+        self._log(f"入力数={len(self.files)}, 出力={output_path}, CRF={crf}, preset={preset}, size={width}x{height}")
         if self.transition_after_indices:
-            indices_str = ", ".join(str(i + 1) for i in sorted(self.transition_after_indices) if i < len(self.files))
-            self._log(f"- トランジション挿入位置 (クリップ番号基準): {indices_str}")
+            s = ", ".join(str(i + 1) for i in sorted(self.transition_after_indices) if i < len(self.files))
+            self._log(f"黒トランジション挿入位置 (1 始まり): {s}")
         else:
-            self._log("- トランジション挿入位置: なし")
+            self._log("黒トランジション挿入なし。")
 
-        ordered_files = list(self.files)
-        self._run_ffmpeg_concat(ordered_files, output_path, crf, preset, width, height)
-
-    # ---------------- 実行ロジック（全区間クロスフェードボタン） ----------------
+        self._run_ffmpeg_concat(list(self.files), output_path, crf, preset, width, height)
 
     def on_run_full_crossfade(self) -> None:
         if len(self.files) < 2:
@@ -391,593 +771,41 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         try:
             crf = int(self.crf_var.get().strip())
-        except ValueError:
-            messagebox.showwarning("警告", "CRF には整数値を入力してください。")
-            return
-
-        try:
             width = int(self.width_var.get().strip())
             height = int(self.height_var.get().strip())
         except ValueError:
-            messagebox.showwarning("警告", "幅・高さには整数値を入力してください。")
+            messagebox.showwarning("警告", "CRF / 幅 / 高さには整数を入力してください。")
             return
 
         preset = self.preset_var.get().strip() or "veryfast"
+        tr = self.transition_type_var.get().strip() or "fade"
+        if tr not in XF_TRANSITIONS:
+            tr = "fade"
 
         output_path = Path(output_str)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._log("全区間クロスフェードモードで連結を開始します...")
-        self._log(f"- 入力ファイル数: {len(self.files)}")
-        self._log(f"- 出力: {output_path}")
-        self._log(f"- CRF: {crf}, preset: {preset}, size: {width}x{height}")
-        self._log("- すべての境界をクロスフェードします（トランジション指定は無視されます）。")
+        self._log("全区間クロスフェードモードで連結を開始します。")
+        self._log(f"入力数={len(self.files)}, 出力={output_path}")
+        self._log(f"CRF={crf}, preset={preset}, size={width}x{height}, transition={tr}")
+        self._log("画面上の順序のすべての境界をクロスフェードします（黒トランジション指定は無視されます）。")
 
-        ordered_files = list(self.files)
         self._run_ffmpeg_full_crossfade_chain(
-            ordered_files,
+            list(self.files),
             output_path,
             crf,
             preset,
             width,
             height,
+            tr,
         )
 
-    # ---------------- ffprobe ヘルパ ----------------
-
-    def _probe_duration(self, path: Path) -> float | None:
-        cmd = [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(path),
-        ]
-        try:
-            proc = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-        except FileNotFoundError:
-            self._log("ffprobe が見つからないため、長さ取得に失敗しました。", error=True)
-            return None
-
-        if proc.returncode != 0:
-            self._log("ffprobe による長さ取得に失敗しました。", error=True)
-            self._log(proc.stdout)
-            self._log(proc.stderr)
-            return None
-
-        try:
-            return float(proc.stdout.strip())
-        except ValueError:
-            self._log("ffprobe の出力から長さを解釈できませんでした。", error=True)
-            return None
-
-    def _has_audio_stream(self, path: Path) -> bool:
-        cmd = [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "a",
-            "-show_entries",
-            "stream=index",
-            "-of",
-            "csv=p=0",
-            str(path),
-        ]
-        try:
-            proc = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-        except FileNotFoundError:
-            self._log("ffprobe が見つからないため、音声ストリームの有無を判定できません。", error=True)
-            return False
-
-        if proc.returncode != 0:
-            self._log("ffprobe による音声ストリーム判定に失敗しました。", error=True)
-            self._log(proc.stdout)
-            self._log(proc.stderr)
-            return False
-
-        return bool(proc.stdout.strip())
-
-    # ---------------- クロスフェード（2 クリップ専用：通常ボタン用） ----------------
-
-    def _run_ffmpeg_crossfade_two(
-        self,
-        input_paths: list[Path],
-        output_path: Path,
-        crf: int,
-        preset: str,
-        width: int,
-        height: int,
-    ) -> bool:
-        if len(input_paths) != 2:
-            return False
-
-        clip0, clip1 = input_paths
-
-        self._log("クロスフェードモードで連結を試みます（2 クリップ専用）。")
-        d0 = self._probe_duration(clip0)
-        d1 = self._probe_duration(clip1)
-
-        if d0 is None or d1 is None:
-            self._log("クリップ長の取得に失敗したため、クロスフェードをスキップします。", error=True)
-            return False
-
-        max_dur = 1.0
-        t = min(max_dur, d0 / 2.0, d1 / 2.0)
-        if t <= 0.1:
-            self._log("クロスフェード時間が十分に取れないため、クロスフェードをスキップします。", error=True)
-            return False
-
-        offset = max(d0 - t, 0.0)
-
-        self._log(f"clip0 長さ: {d0:.3f} sec, clip1 長さ: {d1:.3f} sec")
-        self._log(f"クロスフェード時間: {t:.3f} sec, offset: {offset:.3f} sec")
-
-        has_a0 = self._has_audio_stream(clip0)
-        has_a1 = self._has_audio_stream(clip1)
-        self._log(f"clip0 audio: {has_a0}, clip1 audio: {has_a1}")
-
-        t_str = f"{t:.3f}"
-        offset_str = f"{offset:.3f}"
-
-        vf_chain = (
-            f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
-            "setpts=PTS-STARTPTS[v0];"
-            f"[1:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
-            "setpts=PTS-STARTPTS[v1];"
-        )
-
-        if has_a0 and has_a1:
-            af_chain = (
-                "[0:a]asetpts=PTS-STARTPTS[a0];"
-                "[1:a]asetpts=PTS-STARTPTS[a1];"
-            )
-            xf_chain = (
-                f"[v0][v1]xfade=transition=fade:duration={t_str}:offset={offset_str}[vxf];"
-                f"[vxf]format=yuv420p[v01];"
-                f"[a0][a1]acrossfade=d={t_str}[a01]"
-            )
-            filter_complex = vf_chain + af_chain + xf_chain
-
-            cmd = [
-                FFMPEG_CMD,
-                "-y",
-                "-i",
-                str(clip0),
-                "-i",
-                str(clip1),
-                "-filter_complex",
-                filter_complex,
-                "-map",
-                "[v01]",
-                "-map",
-                "[a01]",
-                "-c:v",
-                "libx264",
-                "-preset",
-                preset,
-                "-crf",
-                str(crf),
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "192k",
-                "-movflags",
-                "+faststart",
-                str(output_path),
-            ]
-        else:
-            self._log("音声ストリームが揃っていないため、映像のみクロスフェードを行います。")
-            xf_chain = (
-                f"[v0][v1]xfade=transition=fade:duration={t_str}:offset={offset_str}[vxf];"
-                f"[vxf]format=yuv420p[v01]"
-            )
-            filter_complex = vf_chain + xf_chain
-
-            cmd = [
-                FFMPEG_CMD,
-                "-y",
-                "-i",
-                str(clip0),
-                "-i",
-                str(clip1),
-                "-filter_complex",
-                filter_complex,
-                "-map",
-                "[v01]",
-                "-c:v",
-                "libx264",
-                "-preset",
-                preset,
-                "-crf",
-                str(crf),
-                "-pix_fmt",
-                "yuv420p",
-                "-an",
-                "-movflags",
-                "+faststart",
-                str(output_path),
-            ]
-
-        self._log("ffmpeg クロスフェードコマンド:")
-        self._log(" ".join(cmd))
-
-        try:
-            proc = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-        except FileNotFoundError:
-            self._log("エラー: ffmpeg コマンドが見つかりません。PATH 設定を確認してください。", error=True)
-            messagebox.showerror("エラー", "ffmpeg が見つかりませんでした。PATH の設定を確認してください。")
-            return False
-
-        if proc.returncode != 0:
-            self._log("ffmpeg クロスフェードの実行に失敗しました。", error=True)
-            self._log(proc.stdout)
-            self._log(proc.stderr)
-            messagebox.showerror(
-                "エラー",
-                "クロスフェードの実行に失敗しました。ログを確認してください。",
-            )
-            return False
-
-        self._log("クロスフェードの実行が正常に完了しました。")
-        self._log(proc.stdout)
-        self._log(proc.stderr)
-        messagebox.showinfo("完了", f"クロスフェード連結が完了しました。\n\n出力: {output_path}")
-        return True
-
-    # ---------------- 全区間クロスフェード（N 本対応） ----------------
-
-    def _run_ffmpeg_full_crossfade_chain(
-        self,
-        input_paths: list[Path],
-        output_path: Path,
-        crf: int,
-        preset: str,
-        width: int,
-        height: int,
-    ) -> None:
-        """
-        現在の表示順のすべての境界をクロスフェードでつなぐ。
-        - 映像: 必ず xfade チェーン
-        - 音声: 全クリップに音声がある場合のみ acrossfade チェーン
-        """
-        n = len(input_paths)
-        if n < 2:
-            messagebox.showwarning("警告", "全区間クロスフェードには 2 本以上のクリップが必要です。")
-            return
-
-        # 長さを取得
-        durations: list[float] = []
-        for p in input_paths:
-            d = self._probe_duration(p)
-            if d is None:
-                self._log(f"長さ取得に失敗したクリップがあります: {p}", error=True)
-                messagebox.showerror("エラー", f"ffprobe による長さ取得に失敗しました。\n問題のファイル: {p}")
-                return
-            durations.append(d)
-
-        # クロスフェード時間 t を決定（最大 1.0 秒、かつ各クリップ長の半分以下）
-        min_d = min(durations)
-        max_t = 1.0
-        t = min(max_t, min_d / 2.0)
-        if t <= 0.1:
-            self._log("クロスフェード時間が十分に取れないため、全区間クロスフェードを中止します。", error=True)
-            messagebox.showerror(
-                "エラー",
-                "クロスフェード時間を十分に確保できませんでした。\n非常に短いクリップが含まれていないか確認してください。",
-            )
-            return
-
-        # 各フェードの offset を計算
-        # prefix_durs[j] = 0..j までの長さの合計
-        prefix_durs: list[float] = []
-        acc = 0.0
-        for d in durations:
-            acc += d
-            prefix_durs.append(acc)
-
-        offsets: list[float] = []
-        for j in range(n - 1):
-            # j 番目のフェード（clip_j と clip_{j+1} の境界）
-            # offset_j = sum(d0..dj) - (j+1)*t
-            offset_j = prefix_durs[j] - (j + 1) * t
-            if offset_j < 0:
-                offset_j = 0.0
-            offsets.append(offset_j)
-
-        self._log("全区間クロスフェード用の長さと offset:")
-        for idx, d in enumerate(durations):
-            self._log(f"  clip{idx}: {d:.3f} sec")
-        for j, off in enumerate(offsets):
-            self._log(f"  フェード {j}: offset={off:.3f} sec (clip{j}→clip{j+1})")
-
-        # 音声ストリームの有無を確認
-        audio_flags = [self._has_audio_stream(p) for p in input_paths]
-        has_any_audio = any(audio_flags)
-        audio_all = all(audio_flags) and has_any_audio
-
-        if not has_any_audio:
-            self._log("どのクリップにも音声ストリームがないため、映像のみクロスフェードします。")
-        elif not audio_all:
-            self._log(
-                "一部のクリップにのみ音声ストリームがあるため、全区間クロスフェードでは音声を無効化します。",
-                error=True,
-            )
-            self._log(f"音声あり/なしフラグ: {audio_flags}")
-        else:
-            self._log("全てのクリップに音声ストリームがあるため、映像 + 音声のクロスフェードを行います。")
-
-        t_str = f"{t:.3f}"
-
-        filter_parts: list[str] = []
-
-        # 映像・音声の事前処理
-        for i in range(n):
-            filter_parts.append(
-                f"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
-                f"setpts=PTS-STARTPTS[v{i}];"
-            )
-            if audio_all:
-                filter_parts.append(
-                    f"[{i}:a]asetpts=PTS-STARTPTS[a{i}];"
-                )
-
-        # xfade / acrossfade チェーン
-        prev_v = "v0"
-        prev_a = "a0" if audio_all else None
-
-        for j in range(n - 1):
-            off = offsets[j]
-            off_str = f"{off:.3f}"
-            v_out = f"vxf{j}"
-            filter_parts.append(
-                f"[{prev_v}][v{j+1}]xfade=transition=fade:duration={t_str}:offset={off_str}[{v_out}];"
-            )
-            prev_v = v_out
-
-            if audio_all and prev_a is not None:
-                a_out = f"axf{j}"
-                filter_parts.append(
-                    f"[{prev_a}][a{j+1}]acrossfade=d={t_str}[{a_out}];"
-                )
-                prev_a = a_out
-
-        # 最終出力ラベル
-        filter_parts.append(f"[{prev_v}]format=yuv420p[vout];")
-        if audio_all and prev_a is not None:
-            aout_label = prev_a
-        else:
-            aout_label = None
-
-        filter_complex = "".join(filter_parts)
-
-        # ffmpeg コマンド組み立て
-        cmd: list[str] = [FFMPEG_CMD, "-y"]
-        for p in input_paths:
-            cmd.extend(["-i", str(p)])
-        cmd.extend(["-filter_complex", filter_complex, "-map", "[vout]"])
-        cmd.extend(["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"])
-
-        if aout_label is not None:
-            cmd.extend(["-map", f"[{aout_label}]", "-c:a", "aac", "-b:a", "192k"])
-        else:
-            cmd.extend(["-an"])
-
-        cmd.extend(["-movflags", "+faststart", str(output_path)])
-
-        self._log("ffmpeg 全区間クロスフェードコマンド:")
-        self._log(" ".join(cmd))
-
-        try:
-            proc = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-        except FileNotFoundError:
-            self._log("エラー: ffmpeg コマンドが見つかりません。PATH 設定を確認してください。", error=True)
-            messagebox.showerror("エラー", "ffmpeg が見つかりませんでした。PATH の設定を確認してください。")
-            return
-
-        if proc.returncode != 0:
-            self._log("ffmpeg（全区間クロスフェード）の実行に失敗しました。", error=True)
-            self._log(proc.stdout)
-            self._log(proc.stderr)
-            messagebox.showerror(
-                "エラー",
-                "全区間クロスフェードの実行に失敗しました。ログを確認してください。",
-            )
-            return
-
-        self._log("全区間クロスフェードの実行が正常に完了しました。")
-        self._log(proc.stdout)
-        self._log(proc.stderr)
-        messagebox.showinfo("完了", f"全区間クロスフェード連結が完了しました。\n\n出力: {output_path}")
-
-    # ---------------- 黒トランジション生成 ----------------
-
-    def _ensure_transition_clip(self) -> Path | None:
-        base_dir = Path(__file__).resolve().parent
-        clip_path = base_dir / TRANSITION_CLIP_NAME
-
-        if clip_path.exists():
-            return clip_path
-
-        self._log("トランジションクリップが存在しないため、新規作成します。")
-        cmd = [
-            FFMPEG_CMD,
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            "color=c=black:s=1920x1080:d=1",
-            "-r",
-            "30",
-            "-pix_fmt",
-            "yuv420p",
-            str(clip_path),
-        ]
-        self._log("トランジションクリップ作成 ffmpeg コマンド:")
-        self._log(" ".join(cmd))
-
-        try:
-            proc = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-        except FileNotFoundError:
-            self._log("エラー: ffmpeg が見つからないためトランジションクリップを生成できません。", error=True)
-            messagebox.showerror("エラー", "ffmpeg が見つからないためトランジションクリップを生成できませんでした。")
-            return None
-
-        if proc.returncode != 0:
-            self._log("トランジションクリップ生成に失敗しました。", error=True)
-            self._log(proc.stdout)
-            self._log(proc.stderr)
-            messagebox.showerror("エラー", "トランジションクリップ生成に失敗しました。ログを確認してください。")
-            return None
-
-        self._log(f"トランジションクリップを作成しました: {clip_path}")
-        return clip_path
-
-    # ---------------- concat 実行本体（通常モード） ----------------
-
-    def _run_ffmpeg_concat(
-        self,
-        input_paths: list[Path],
-        output_path: Path,
-        crf: int,
-        preset: str,
-        width: int,
-        height: int,
-    ) -> None:
-        # 2 クリップ + 1 箇所指定 (1 本目の後) のときはクロスフェード優先
-        if len(input_paths) == 2 and self.transition_after_indices == {0}:
-            self._log("2 クリップ構成かつ 1 箇所のトランジション指定のため、クロスフェードモードを優先します。")
-            ok = self._run_ffmpeg_crossfade_two(
-                input_paths=input_paths,
-                output_path=output_path,
-                crf=crf,
-                preset=preset,
-                width=width,
-                height=height,
-            )
-            if ok:
-                return
-            else:
-                self._log(
-                    "クロスフェードに失敗したため、通常連結 (必要なら黒トランジション) にフォールバックします。",
-                    error=True,
-                )
-
-        tmp_dir = Path(tempfile.mkdtemp(prefix="svc_v3_gui_"))
-        concat_path = tmp_dir / "concat_list_v3.txt"
-
-        transition_clip_path: Path | None = None
-        if self.transition_after_indices:
-            transition_clip_path = self._ensure_transition_clip()
-            if transition_clip_path is None:
-                self._log("トランジションクリップの準備に失敗したため、トランジションなしで連結します。", error=True)
-                self.transition_after_indices.clear()
-
-        with concat_path.open("w", encoding="utf-8") as f:
-            for idx, p in enumerate(input_paths):
-                posix = p.as_posix().replace("'", "''")
-                f.write(f"file '{posix}'\n")
-                if transition_clip_path is not None and idx in self.transition_after_indices:
-                    t_posix = transition_clip_path.as_posix().replace("'", "''")
-                    f.write(f"file '{t_posix}'\n")
-
-        vf = (
-            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-        )
-
-        cmd = [
-            FFMPEG_CMD,
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(concat_path),
-            "-vf",
-            vf,
-            "-c:v",
-            "libx264",
-            "-preset",
-            preset,
-            "-crf",
-            str(crf),
-            "-c:a",
-            "copy",
-            str(output_path),
-        ]
-
-        self._log("ffmpeg コマンド:")
-        self._log(" ".join(cmd))
-
-        try:
-            proc = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-        except FileNotFoundError:
-            self._log("エラー: ffmpeg コマンドが見つかりません。PATH 設定を確認してください。", error=True)
-            messagebox.showerror("エラー", "ffmpeg が見つかりませんでした。PATH の設定を確認してください。")
-            return
-
-        if proc.returncode != 0:
-            self._log("ffmpeg の実行に失敗しました。", error=True)
-            self._log(proc.stdout)
-            self._log(proc.stderr)
-            messagebox.showerror(
-                "エラー",
-                "ffmpeg の実行に失敗しました。ログを確認してください。",
-            )
-            return
-
-        self._log("ffmpeg の実行が正常に完了しました。")
-        self._log(proc.stdout)
-        self._log(proc.stderr)
-        messagebox.showinfo("完了", f"連結が完了しました。\n\n出力: {output_path}")
-
-    # ---------------- ログ出力 ----------------
+    # ================= ログ =================
 
     def _log(self, msg: str, error: bool = False) -> None:
         self.log_text.insert(tk.END, msg + "\n")
         self.log_text.see(tk.END)
-        if error:
-            pass
+        # error フラグは今のところ色分け等には使っていないが、将来拡張用に残す
 
 
 def main() -> None:
