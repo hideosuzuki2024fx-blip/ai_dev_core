@@ -9,6 +9,8 @@ from typing import List, Tuple
 from flask import Flask, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
+import analyze_and_concat_v3 as v3
+
 app = Flask(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -38,11 +40,11 @@ def run_ffmpeg_concat(
 ) -> Tuple[int, str, str]:
     """
     アップロードされた FileStorage 群を一時ディレクトリに保存し、
-    v3 メモに記載されている ffmpeg パイプラインで 1 本の MP4 に連結します。
+    v3 コア (analyze_and_concat_v3) と同じ特徴抽出・順序決定ロジックで
+    連結順を推定したうえで、ffmpeg で 1 本の MP4 に連結します。
 
-    注:
-    - v1/v2/v3 コアが持つ「推定連結順」ロジックは、このサーバ側では利用していません。
-      ここでは「アップロードされた順」で連結します。
+    - 特徴抽出: v3.extract_features (中身は v1 のロジックを再利用)
+    - 順序決定: v3.build_order
     """
     work_dir = Path(
         tempfile.mkdtemp(prefix="svc_v3_", dir=str(TMP_ROOT))
@@ -50,6 +52,7 @@ def run_ffmpeg_concat(
 
     saved_paths: List[Path] = []
 
+    # 1) 一時ディレクトリに保存
     for idx, file_storage in enumerate(input_files, start=1):
         orig_name = file_storage.filename or f"input_{idx}.mp4"
         filename = secure_filename(orig_name) or f"input_{idx}.mp4"
@@ -65,13 +68,29 @@ def run_ffmpeg_concat(
     if not saved_paths:
         return 1, "", "有効な mp4 入力が 1 件もありません。"
 
+    # 2) v3 と同じ特徴抽出・順序推定ロジックを適用
+    features = []
+    for p in saved_paths:
+        app.logger.info(f"特徴抽出 (API v3): {p}")
+        start_feat, end_feat = v3.extract_features(str(p))
+        features.append({"path": str(p), "start": start_feat, "end": end_feat})
+
+    order = v3.build_order(features)
+    ordered_paths = [features[i]["path"] for i in order]
+
+    app.logger.info("推定された連結順 (先頭 -> 末尾) [API v3]:")
+    for idx, path in enumerate(ordered_paths, start=1):
+        app.logger.info("%2d. %s", idx, path)
+
+    # 3) concat list を作成
     concat_path = work_dir / "concat_list_v3.txt"
     with concat_path.open("w", encoding="utf-8") as f:
-        for p in saved_paths:
-            # Windows でも ffmpeg には POSIX 形式で渡す
-            f.write(f"file '{p.as_posix()}'\n")
+        for p in ordered_paths:
+            # Windows でも ffmpeg には POSIX 形式で渡す & ' をエスケープ
+            posix = Path(p).as_posix().replace("'", "''")
+            f.write(f"file '{posix}'\n")
 
-    # v3 メモに記載されているフィルタ構成をそのまま利用
+    # 4) v3 と同じフィルタ構成で 16:9 / SAR=1:1 / yuv420p に正規化
     vf = (
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"

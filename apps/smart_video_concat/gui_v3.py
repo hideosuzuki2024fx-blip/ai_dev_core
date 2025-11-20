@@ -6,6 +6,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+import analyze_and_concat_v3 as v3
 
 FFMPEG_CMD = "ffmpeg"
 
@@ -14,7 +15,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
     """
     smart_video_concat v3 専用の簡易 GUI。
 
-    - 複数 mp4 を選択（順番 = 連結順）
+    - 複数 mp4 を選択（v3 のロジックで自動連結順を推定）
     - CRF / preset / width / height を指定
     - v3 と同等のフィルタ:
         scale=WIDTH:HEIGHT:force_original_aspect_ratio=decrease,
@@ -22,7 +23,8 @@ class SmartVideoConcatV3GUI(tk.Tk):
       で 1 本の mp4 を生成します。
 
     注意:
-    - v1/v2/v3 コアの「推定連結順ロジック」は使わず、ユーザーが選んだ順序で連結します。
+    - 連結順は v3 コア (analyze_and_concat_v3) の extract_features / build_order に従います。
+      （ユーザーの追加順ではなく、推定順で連結します）
     - FFMPEG_CMD に ffmpeg がパス通っている前提です。
     """
 
@@ -48,7 +50,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
     def _build_ui(self) -> None:
         # 上段: ファイルリスト & 操作ボタン
-        frame_top = ttk.LabelFrame(self, text="入力ファイル（上から順に連結）")
+        frame_top = ttk.LabelFrame(self, text="入力ファイル（v3 ロジックで自動並び替え）")
         frame_top.pack(fill="both", expand=True, padx=10, pady=8)
 
         left = ttk.Frame(frame_top)
@@ -72,8 +74,8 @@ class SmartVideoConcatV3GUI(tk.Tk):
         btn_add = ttk.Button(right, text="追加...", command=self.on_add_files)
         btn_remove = ttk.Button(right, text="選択削除", command=self.on_remove_selected)
         btn_clear = ttk.Button(right, text="全クリア", command=self.on_clear_files)
-        btn_up = ttk.Button(right, text="上へ", command=self.on_move_up)
-        btn_down = ttk.Button(right, text="下へ", command=self.on_move_down)
+        btn_up = ttk.Button(right, text="表示順 上へ", command=self.on_move_up)
+        btn_down = ttk.Button(right, text="表示順 下へ", command=self.on_move_down)
 
         for w in (btn_add, btn_remove, btn_clear, btn_up, btn_down):
             w.pack(fill="x", pady=2)
@@ -136,7 +138,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         btn_run = ttk.Button(
             frame_bottom,
-            text="連結を実行",
+            text="v3 ロジックで連結を実行",
             command=self.on_run_concat,
         )
         btn_run.pack(side="top", pady=(0, 6), anchor="e")
@@ -148,6 +150,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         )
         self.log_text.pack(fill="both", expand=True)
         self._log("smart_video_concat v3 GUI を起動しました。")
+        self._log("連結順は v3 コアのロジックで自動決定されます。")
 
     # ---------------- ファイルリスト操作 ----------------
 
@@ -158,7 +161,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
     def on_add_files(self) -> None:
         paths = filedialog.askopenfilenames(
-            title="連結する mp4 ファイルを選択",
+            title="連結候補の mp4 ファイルを選択",
             filetypes=[("MP4 files", "*.mp4"), ("All files", "*.*")],
         )
         if not paths:
@@ -243,7 +246,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
     def on_run_concat(self) -> None:
         if not self.files:
-            messagebox.showwarning("警告", "連結する mp4 ファイルを 1 つ以上追加してください。")
+            messagebox.showwarning("警告", "連結候補の mp4 ファイルを 1 つ以上追加してください。")
             return
 
         output_str = self.output_path_var.get().strip()
@@ -273,7 +276,33 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self._log(f"- 入力ファイル数: {len(self.files)}")
         self._log(f"- 出力: {output_path}")
         self._log(f"- CRF: {crf}, preset: {preset}, size: {width}x{height}")
-        self._run_ffmpeg_concat(self.files, output_path, crf, preset, width, height)
+        self._log("v3 コアのロジックで連結順を自動推定します。")
+
+        # v3 と同じロジックで自動連結順を決定
+        ordered_files = self._auto_order_v3(self.files)
+
+        self._run_ffmpeg_concat(ordered_files, output_path, crf, preset, width, height)
+
+    def _auto_order_v3(self, input_paths: list[Path]) -> list[Path]:
+        """
+        analyze_and_concat_v3 の extract_features / build_order を使って
+        連結順を推定します。
+        """
+        features: list[dict] = []
+        self._log("特徴抽出と順序推定を開始します (v3)...")
+        for p in input_paths:
+            self._log(f"特徴抽出 (GUI v3): {p}")
+            start_feat, end_feat = v3.extract_features(str(p))
+            features.append({"path": p, "start": start_feat, "end": end_feat})
+
+        order = v3.build_order(features)
+        ordered = [features[i]["path"] for i in order]
+
+        self._log("推定された連結順 (先頭 -> 末尾):")
+        for idx, p in enumerate(ordered, start=1):
+            self._log(f"{idx:2d}. {p}")
+
+        return ordered
 
     def _run_ffmpeg_concat(
         self,
@@ -291,8 +320,9 @@ class SmartVideoConcatV3GUI(tk.Tk):
         # concat list を作成
         with concat_path.open("w", encoding="utf-8") as f:
             for p in input_paths:
-                # ffmpeg concat 用に POSIX パスで書き出し
-                f.write(f"file '{p.as_posix()}'\n")
+                # ffmpeg concat 用に POSIX パスで書き出し & ' をエスケープ
+                posix = p.as_posix().replace("'", "''")
+                f.write(f"file '{posix}'\n")
 
         vf = (
             f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
@@ -357,7 +387,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self.log_text.insert(tk.END, msg + "\n")
         self.log_text.see(tk.END)
         if error:
-            # とりあえず背景色などは変えず、メッセージ内容で区別
+            # とりあえずメッセージ内容で区別
             pass
 
 
