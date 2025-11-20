@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox, ttk
 import analyze_and_concat_v3 as v3
 
 FFMPEG_CMD = "ffmpeg"
+TRANSITION_CLIP_NAME = "transition_black_1s.mp4"
 
 
 class SmartVideoConcatV3GUI(tk.Tk):
@@ -19,21 +20,27 @@ class SmartVideoConcatV3GUI(tk.Tk):
       1. ファイルを追加（追加順で一覧表示）
       2. 「自動並び替え (v3 推奨順)」ボタンで、v3 ロジックに基づく推奨順に並び替え
       3. 必要に応じて「上へ」「下へ」で手動微調整
-      4. 「連結を実行」で、画面リストに表示されている順番のまま ffmpeg で連結
+      4. 必要に応じて「選択の後に黒トランジション」を押して、黒 1 秒クリップを挿入したい境界を指定
+      5. 「連結を実行」で、画面リストに表示されている順とトランジション指定に従って ffmpeg で連結
 
     ポイント:
       - 自動並び替えはユーザー操作時のみ実行されます。
-      - 連結時には自動並び替えは行わず、「現在リストに見えている順＝最終連結順」です。
-      - 自動並び替えのロジックは analyze_and_concat_v3.extract_features / build_order に準拠します。
+      - 連結時には自動並び替えは行わず、「現在リストに見えている順 = 連結順」です。
+      - トランジションは「選択したクリップの直後」に黒 1 秒クリップとして挿入されます。
+      - トランジションクリップ自体は、必要になったときに ffmpeg で自動生成します。
     """
 
     def __init__(self) -> None:
         super().__init__()
         self.title("smart_video_concat v3 GUI")
-        self.geometry("780x560")
+        self.geometry("820x600")
 
         self.file_listbox: tk.Listbox
         self.files: list[Path] = []
+
+        # どのクリップの「直後」にトランジションを挿入するかを 0 始まりインデックスで保持
+        # 例: {0, 2} なら 1 本目の後と 3 本目の後にトランジション
+        self.transition_after_indices: set[int] = set()
 
         self.output_path_var = tk.StringVar()
         self.crf_var = tk.StringVar(value="20")
@@ -60,7 +67,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
             left,
             selectmode="extended",
             yscrollcommand=scrollbar.set,
-            height=10,
+            height=12,
         )
         scrollbar.config(command=self.file_listbox.yview)
 
@@ -76,7 +83,20 @@ class SmartVideoConcatV3GUI(tk.Tk):
         btn_up = ttk.Button(right, text="上へ (表示順)", command=self.on_move_up)
         btn_down = ttk.Button(right, text="下へ (表示順)", command=self.on_move_down)
 
-        for w in (btn_add, btn_remove, btn_clear, btn_up, btn_down):
+        ttk.Separator(right, orient="horizontal").pack(fill="x", pady=4)
+
+        btn_auto_tr = ttk.Button(
+            right,
+            text="選択の後に\n黒トランジション",
+            command=self.on_add_transition_after_selected,
+        )
+        btn_clear_tr = ttk.Button(
+            right,
+            text="トランジション\n全クリア",
+            command=self.on_clear_transitions,
+        )
+
+        for w in (btn_add, btn_remove, btn_clear, btn_up, btn_down, btn_auto_tr, btn_clear_tr):
             w.pack(fill="x", pady=2)
 
         # 中段: エンコード設定
@@ -153,13 +173,13 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         self.log_text = tk.Text(
             frame_bottom,
-            height=8,
+            height=10,
             wrap="word",
         )
         self.log_text.pack(fill="both", expand=True)
         self._log("smart_video_concat v3 GUI を起動しました。")
         self._log("現在リストに表示されている順番が、そのまま連結順になります。")
-        self._log("必要に応じて「自動並び替え (v3 推奨順)」ボタンで推奨順を適用できます。")
+        self._log("必要に応じて「自動並び替え (v3 推奨順)」とトランジション指定を使ってください。")
 
     # ---------------- ファイルリスト操作 ----------------
 
@@ -167,6 +187,15 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self.file_listbox.delete(0, tk.END)
         for p in self.files:
             self.file_listbox.insert(tk.END, str(p))
+
+    def _invalidate_transitions_due_to_reorder(self) -> None:
+        """
+        順序が大きく変わる操作をしたときに、インデックスずれを避けるため
+        トランジション指定をリセットする。
+        """
+        if self.transition_after_indices:
+            self.transition_after_indices.clear()
+            self._log("ファイル順が変更されたため、トランジション指定をリセットしました。")
 
     def on_add_files(self) -> None:
         paths = filedialog.askopenfilenames(
@@ -192,11 +221,11 @@ class SmartVideoConcatV3GUI(tk.Tk):
         selection = list(self.file_listbox.curselection())
         if not selection:
             return
-        # 後ろから消す
         for idx in reversed(selection):
             if 0 <= idx < len(self.files):
                 self.files.pop(idx)
         self._refresh_listbox()
+        self._invalidate_transitions_due_to_reorder()
         self._log("選択中のファイルを削除しました。")
 
     def on_clear_files(self) -> None:
@@ -204,7 +233,8 @@ class SmartVideoConcatV3GUI(tk.Tk):
             return
         self.files.clear()
         self._refresh_listbox()
-        self._log("ファイル一覧をクリアしました。")
+        self.transition_after_indices.clear()
+        self._log("ファイル一覧およびトランジション指定をクリアしました。")
 
     def on_move_up(self) -> None:
         selection = list(self.file_listbox.curselection())
@@ -215,10 +245,10 @@ class SmartVideoConcatV3GUI(tk.Tk):
                 continue
             self.files[idx - 1], self.files[idx] = self.files[idx], self.files[idx - 1]
         self._refresh_listbox()
-        # 再選択
         self.file_listbox.selection_clear(0, tk.END)
         for idx in [max(i - 1, 0) for i in selection]:
             self.file_listbox.selection_set(idx)
+        self._invalidate_transitions_due_to_reorder()
 
     def on_move_down(self) -> None:
         selection = list(self.file_listbox.curselection())
@@ -229,10 +259,10 @@ class SmartVideoConcatV3GUI(tk.Tk):
                 continue
             self.files[idx + 1], self.files[idx] = self.files[idx], self.files[idx + 1]
         self._refresh_listbox()
-        # 再選択
         self.file_listbox.selection_clear(0, tk.END)
         for idx in [min(i + 1, len(self.files) - 1) for i in selection]:
             self.file_listbox.selection_set(idx)
+        self._invalidate_transitions_due_to_reorder()
 
     # ---------------- 出力パス選択 ----------------
 
@@ -256,7 +286,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
     def on_auto_order_v3(self) -> None:
         """
         v3 のロジック (analyze_and_concat_v3) を使って自動並び替えを行い、
-        self.files とリスト表示を「推奨順」に更新します。
+        self.files を「推奨順」に更新します。
         """
         if not self.files:
             messagebox.showwarning("警告", "自動並び替えの対象となるファイルがありません。")
@@ -265,8 +295,9 @@ class SmartVideoConcatV3GUI(tk.Tk):
         ordered_files = self._auto_order_v3(self.files)
         self.files = ordered_files
         self._refresh_listbox()
+        self._invalidate_transitions_due_to_reorder()
         self._log("自動並び替え (v3 推奨順) を適用しました。")
-        self._log("必要であれば「上へ」「下へ」で微調整してから連結を実行してください。")
+        self._log("必要であれば「上へ」「下へ」で微調整してから、トランジションを指定して連結を実行してください。")
 
     def _auto_order_v3(self, input_paths: list[Path]) -> list[Path]:
         """
@@ -288,6 +319,37 @@ class SmartVideoConcatV3GUI(tk.Tk):
             self._log(f"{idx:2d}. {p}")
 
         return ordered
+
+    # ---------------- トランジション指定 ----------------
+
+    def on_add_transition_after_selected(self) -> None:
+        """
+        選択されている行の「直後」に黒 1 秒トランジションを挿入する指定を追加します。
+        実際の挿入は _run_ffmpeg_concat 内で concat_list を書く際に行います。
+        """
+        if not self.files:
+            messagebox.showwarning("警告", "トランジションを挿入する前にファイルを追加してください。")
+            return
+
+        selection = list(self.file_listbox.curselection())
+        if not selection:
+            messagebox.showwarning("警告", "トランジションを挿入する位置として、少なくとも 1 行選択してください。")
+            return
+
+        for idx in selection:
+            if 0 <= idx < len(self.files):
+                self.transition_after_indices.add(idx)
+
+        self._log("以下の位置に黒トランジションを挿入します（クリップ番号は 1 始まり）:")
+        for idx in sorted(self.transition_after_indices):
+            if idx < len(self.files):
+                self._log(f" - {idx + 1} 番目のクリップの直後")
+
+    def on_clear_transitions(self) -> None:
+        if not self.transition_after_indices:
+            return
+        self.transition_after_indices.clear()
+        self._log("トランジション指定をすべてクリアしました。")
 
     # ---------------- 実行ロジック ----------------
 
@@ -327,11 +389,64 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self._log(f"- 入力ファイル数: {len(self.files)}")
         self._log(f"- 出力: {output_path}")
         self._log(f"- CRF: {crf}, preset: {preset}, size: {width}x{height}")
-        self._log("現在リストに表示されている順番のまま連結します。")
+        if self.transition_after_indices:
+            indices_str = ", ".join(str(i + 1) for i in sorted(self.transition_after_indices) if i < len(self.files))
+            self._log(f"- トランジション挿入位置 (クリップ番号基準): {indices_str}")
+        else:
+            self._log("- トランジション挿入位置: なし")
 
-        # ここでは自動並び替えは行わず、self.files の順をそのまま使う
         ordered_files = list(self.files)
         self._run_ffmpeg_concat(ordered_files, output_path, crf, preset, width, height)
+
+    def _ensure_transition_clip(self) -> Path | None:
+        """
+        黒 1 秒トランジションクリップを作成・または再利用します。
+        - 解像度は 1920x1080 固定ですが、後段の scale/pad で出力解像度に揃えられます。
+        """
+        base_dir = Path(__file__).resolve().parent
+        clip_path = base_dir / TRANSITION_CLIP_NAME
+
+        if clip_path.exists():
+            return clip_path
+
+        self._log("トランジションクリップが存在しないため、新規作成します。")
+        cmd = [
+            FFMPEG_CMD,
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=1920x1080:d=1",
+            "-r",
+            "30",
+            "-pix_fmt",
+            "yuv420p",
+            str(clip_path),
+        ]
+        self._log("トランジションクリップ作成 ffmpeg コマンド:")
+        self._log(" ".join(cmd))
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except FileNotFoundError:
+            self._log("エラー: ffmpeg が見つからないためトランジションクリップを生成できません。", error=True)
+            messagebox.showerror("エラー", "ffmpeg が見つからないためトランジションクリップを生成できませんでした。")
+            return None
+
+        if proc.returncode != 0:
+            self._log("トランジションクリップ生成に失敗しました。", error=True)
+            self._log(proc.stdout)
+            self._log(proc.stderr)
+            messagebox.showerror("エラー", "トランジションクリップ生成に失敗しました。ログを確認してください。")
+            return None
+
+        self._log(f"トランジションクリップを作成しました: {clip_path}")
+        return clip_path
 
     def _run_ffmpeg_concat(
         self,
@@ -346,12 +461,24 @@ class SmartVideoConcatV3GUI(tk.Tk):
         tmp_dir = Path(tempfile.mkdtemp(prefix="svc_v3_gui_"))
         concat_path = tmp_dir / "concat_list_v3.txt"
 
+        # トランジションクリップの準備（必要なときだけ）
+        transition_clip_path: Path | None = None
+        if self.transition_after_indices:
+            transition_clip_path = self._ensure_transition_clip()
+            if transition_clip_path is None:
+                self._log("トランジションクリップの準備に失敗したため、トランジションなしで連結します。", error=True)
+                self.transition_after_indices.clear()
+
         # concat list を作成
         with concat_path.open("w", encoding="utf-8") as f:
-            for p in input_paths:
-                # ffmpeg concat 用に POSIX パスで書き出し & ' をエスケープ
+            for idx, p in enumerate(input_paths):
                 posix = p.as_posix().replace("'", "''")
                 f.write(f"file '{posix}'\n")
+
+                # トランジション指定があれば、その直後に黒クリップを挿入
+                if transition_clip_path is not None and idx in self.transition_after_indices:
+                    t_posix = transition_clip_path.as_posix().replace("'", "''")
+                    f.write(f"file '{t_posix}'\n")
 
         vf = (
             f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
