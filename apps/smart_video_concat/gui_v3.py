@@ -15,23 +15,22 @@ class SmartVideoConcatV3GUI(tk.Tk):
     """
     smart_video_concat v3 専用の簡易 GUI。
 
-    - 複数 mp4 を選択（v3 のロジックで自動連結順を推定）
-    - CRF / preset / width / height を指定
-    - v3 と同等のフィルタ:
-        scale=WIDTH:HEIGHT:force_original_aspect_ratio=decrease,
-        pad=WIDTH:HEIGHT:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p
-      で 1 本の mp4 を生成します。
+    フロー:
+      1. ファイルを追加（追加順で一覧表示）
+      2. 「自動並び替え (v3 推奨順)」ボタンで、v3 ロジックに基づく推奨順に並び替え
+      3. 必要に応じて「上へ」「下へ」で手動微調整
+      4. 「連結を実行」で、画面リストに表示されている順番のまま ffmpeg で連結
 
-    注意:
-    - 連結順は v3 コア (analyze_and_concat_v3) の extract_features / build_order に従います。
-      （ユーザーの追加順ではなく、推定順で連結します）
-    - FFMPEG_CMD に ffmpeg がパス通っている前提です。
+    ポイント:
+      - 自動並び替えはユーザー操作時のみ実行されます。
+      - 連結時には自動並び替えは行わず、「現在リストに見えている順＝最終連結順」です。
+      - 自動並び替えのロジックは analyze_and_concat_v3.extract_features / build_order に準拠します。
     """
 
     def __init__(self) -> None:
         super().__init__()
         self.title("smart_video_concat v3 GUI")
-        self.geometry("780x520")
+        self.geometry("780x560")
 
         self.file_listbox: tk.Listbox
         self.files: list[Path] = []
@@ -50,7 +49,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
     def _build_ui(self) -> None:
         # 上段: ファイルリスト & 操作ボタン
-        frame_top = ttk.LabelFrame(self, text="入力ファイル（v3 ロジックで自動並び替え）")
+        frame_top = ttk.LabelFrame(self, text="入力ファイル一覧（現在の表示順 = 連結順）")
         frame_top.pack(fill="both", expand=True, padx=10, pady=8)
 
         left = ttk.Frame(frame_top)
@@ -74,8 +73,8 @@ class SmartVideoConcatV3GUI(tk.Tk):
         btn_add = ttk.Button(right, text="追加...", command=self.on_add_files)
         btn_remove = ttk.Button(right, text="選択削除", command=self.on_remove_selected)
         btn_clear = ttk.Button(right, text="全クリア", command=self.on_clear_files)
-        btn_up = ttk.Button(right, text="表示順 上へ", command=self.on_move_up)
-        btn_down = ttk.Button(right, text="表示順 下へ", command=self.on_move_down)
+        btn_up = ttk.Button(right, text="上へ (表示順)", command=self.on_move_up)
+        btn_down = ttk.Button(right, text="下へ (表示順)", command=self.on_move_down)
 
         for w in (btn_add, btn_remove, btn_clear, btn_up, btn_down):
             w.pack(fill="x", pady=2)
@@ -84,7 +83,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
         frame_mid = ttk.LabelFrame(self, text="エンコード設定（v3 相当）")
         frame_mid.pack(fill="x", padx=10, pady=4, ipady=4)
 
-        # CRF / preset / width / height
         grid = ttk.Frame(frame_mid)
         grid.pack(fill="x", padx=8, pady=4)
 
@@ -132,16 +130,26 @@ class SmartVideoConcatV3GUI(tk.Tk):
         btn_out = ttk.Button(frame_out, text="参照...", command=self.on_browse_output)
         btn_out.pack(side="left")
 
-        # 下段: 実行ボタン & ログ
+        # 下段: 自動並び替えボタン & 実行ボタン & ログ
         frame_bottom = ttk.Frame(self)
         frame_bottom.pack(fill="both", expand=False, padx=10, pady=(4, 10))
 
+        btn_row = ttk.Frame(frame_bottom)
+        btn_row.pack(fill="x", pady=(0, 6))
+
+        btn_auto_order = ttk.Button(
+            btn_row,
+            text="自動並び替え (v3 推奨順)",
+            command=self.on_auto_order_v3,
+        )
+        btn_auto_order.pack(side="left")
+
         btn_run = ttk.Button(
-            frame_bottom,
-            text="v3 ロジックで連結を実行",
+            btn_row,
+            text="連結を実行（表示順のまま）",
             command=self.on_run_concat,
         )
-        btn_run.pack(side="top", pady=(0, 6), anchor="e")
+        btn_run.pack(side="right")
 
         self.log_text = tk.Text(
             frame_bottom,
@@ -150,7 +158,8 @@ class SmartVideoConcatV3GUI(tk.Tk):
         )
         self.log_text.pack(fill="both", expand=True)
         self._log("smart_video_concat v3 GUI を起動しました。")
-        self._log("連結順は v3 コアのロジックで自動決定されます。")
+        self._log("現在リストに表示されている順番が、そのまま連結順になります。")
+        self._log("必要に応じて「自動並び替え (v3 推奨順)」ボタンで推奨順を適用できます。")
 
     # ---------------- ファイルリスト操作 ----------------
 
@@ -242,11 +251,53 @@ class SmartVideoConcatV3GUI(tk.Tk):
         if path:
             self.output_path_var.set(path)
 
+    # ---------------- 自動並び替え (v3 ロジック) ----------------
+
+    def on_auto_order_v3(self) -> None:
+        """
+        v3 のロジック (analyze_and_concat_v3) を使って自動並び替えを行い、
+        self.files とリスト表示を「推奨順」に更新します。
+        """
+        if not self.files:
+            messagebox.showwarning("警告", "自動並び替えの対象となるファイルがありません。")
+            return
+
+        ordered_files = self._auto_order_v3(self.files)
+        self.files = ordered_files
+        self._refresh_listbox()
+        self._log("自動並び替え (v3 推奨順) を適用しました。")
+        self._log("必要であれば「上へ」「下へ」で微調整してから連結を実行してください。")
+
+    def _auto_order_v3(self, input_paths: list[Path]) -> list[Path]:
+        """
+        analyze_and_concat_v3 の extract_features / build_order を使って
+        連結順を推定します。
+        """
+        features: list[dict] = []
+        self._log("特徴抽出と順序推定を開始します (v3)...")
+        for p in input_paths:
+            self._log(f"特徴抽出 (GUI v3): {p}")
+            start_feat, end_feat = v3.extract_features(str(p))
+            features.append({"path": p, "start": start_feat, "end": end_feat})
+
+        order = v3.build_order(features)
+        ordered = [features[i]["path"] for i in order]
+
+        self._log("推定された連結順 (先頭 -> 末尾):")
+        for idx, p in enumerate(ordered, start=1):
+            self._log(f"{idx:2d}. {p}")
+
+        return ordered
+
     # ---------------- 実行ロジック ----------------
 
     def on_run_concat(self) -> None:
+        """
+        現在リストに表示されている順番 (self.files) のまま連結します。
+        自動並び替えはここでは行わず、必要なら事前に on_auto_order_v3 を使います。
+        """
         if not self.files:
-            messagebox.showwarning("警告", "連結候補の mp4 ファイルを 1 つ以上追加してください。")
+            messagebox.showwarning("警告", "連結する mp4 ファイルを 1 つ以上追加してください。")
             return
 
         output_str = self.output_path_var.get().strip()
@@ -276,33 +327,11 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self._log(f"- 入力ファイル数: {len(self.files)}")
         self._log(f"- 出力: {output_path}")
         self._log(f"- CRF: {crf}, preset: {preset}, size: {width}x{height}")
-        self._log("v3 コアのロジックで連結順を自動推定します。")
+        self._log("現在リストに表示されている順番のまま連結します。")
 
-        # v3 と同じロジックで自動連結順を決定
-        ordered_files = self._auto_order_v3(self.files)
-
+        # ここでは自動並び替えは行わず、self.files の順をそのまま使う
+        ordered_files = list(self.files)
         self._run_ffmpeg_concat(ordered_files, output_path, crf, preset, width, height)
-
-    def _auto_order_v3(self, input_paths: list[Path]) -> list[Path]:
-        """
-        analyze_and_concat_v3 の extract_features / build_order を使って
-        連結順を推定します。
-        """
-        features: list[dict] = []
-        self._log("特徴抽出と順序推定を開始します (v3)...")
-        for p in input_paths:
-            self._log(f"特徴抽出 (GUI v3): {p}")
-            start_feat, end_feat = v3.extract_features(str(p))
-            features.append({"path": p, "start": start_feat, "end": end_feat})
-
-        order = v3.build_order(features)
-        ordered = [features[i]["path"] for i in order]
-
-        self._log("推定された連結順 (先頭 -> 末尾):")
-        for idx, p in enumerate(ordered, start=1):
-            self._log(f"{idx:2d}. {p}")
-
-        return ordered
 
     def _run_ffmpeg_concat(
         self,
@@ -387,7 +416,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self.log_text.insert(tk.END, msg + "\n")
         self.log_text.see(tk.END)
         if error:
-            # とりあえずメッセージ内容で区別
+            # 必要であればここでスタイル変更なども可能
             pass
 
 
