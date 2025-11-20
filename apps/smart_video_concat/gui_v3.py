@@ -31,9 +31,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
              * クロスフェードに失敗した場合は、通常連結（黒トランジション含む）にフォールバック。
       - それ以外（3 本以上、複数指定など）の場合:
           -> 従来通り、指定された位置に黒 1 秒クリップを挿入する concat 連結。
-
-    注意:
-      - クロスフェードは現時点では「2 本のクリップ＋1 箇所のトランジション指定」のケースにのみ適用。
     """
 
     def __init__(self) -> None:
@@ -61,7 +58,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
     # ---------------- UI 構築 ----------------
 
     def _build_ui(self) -> None:
-        # 上段: ファイルリスト & 操作ボタン
         frame_top = ttk.LabelFrame(self, text="入力ファイル一覧（現在の表示順 = 連結順）")
         frame_top.pack(fill="both", expand=True, padx=10, pady=8)
 
@@ -105,19 +101,16 @@ class SmartVideoConcatV3GUI(tk.Tk):
         for w in (btn_add, btn_remove, btn_clear, btn_up, btn_down, btn_auto_tr, btn_clear_tr):
             w.pack(fill="x", pady=2)
 
-        # 中段: エンコード設定
         frame_mid = ttk.LabelFrame(self, text="エンコード設定（v3 相当）")
         frame_mid.pack(fill="x", padx=10, pady=4, ipady=4)
 
         grid = ttk.Frame(frame_mid)
         grid.pack(fill="x", padx=8, pady=4)
 
-        # CRF
         ttk.Label(grid, text="CRF").grid(row=0, column=0, sticky="w", padx=2, pady=2)
         crf_entry = ttk.Entry(grid, textvariable=self.crf_var, width=8)
         crf_entry.grid(row=0, column=1, sticky="w", padx=2, pady=2)
 
-        # preset
         ttk.Label(grid, text="preset").grid(row=0, column=2, sticky="w", padx=12, pady=2)
         preset_combo = ttk.Combobox(
             grid,
@@ -134,19 +127,16 @@ class SmartVideoConcatV3GUI(tk.Tk):
             state="readonly",
         )
         preset_combo.grid(row=0, column=3, sticky="w", padx=2, pady=2)
-        preset_combo.current(2)  # veryfast
+        preset_combo.current(2)
 
-        # width
         ttk.Label(grid, text="幅 (width)").grid(row=1, column=0, sticky="w", padx=2, pady=2)
         width_entry = ttk.Entry(grid, textvariable=self.width_var, width=8)
         width_entry.grid(row=1, column=1, sticky="w", padx=2, pady=2)
 
-        # height
         ttk.Label(grid, text="高さ (height)").grid(row=1, column=2, sticky="w", padx=12, pady=2)
         height_entry = ttk.Entry(grid, textvariable=self.height_var, width=8)
         height_entry.grid(row=1, column=3, sticky="w", padx=2, pady=2)
 
-        # 出力パス
         frame_out = ttk.Frame(frame_mid)
         frame_out.pack(fill="x", padx=8, pady=(2, 6))
 
@@ -156,7 +146,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
         btn_out = ttk.Button(frame_out, text="参照...", command=self.on_browse_output)
         btn_out.pack(side="left")
 
-        # 下段: 自動並び替えボタン & 実行ボタン & ログ
         frame_bottom = ttk.Frame(self)
         frame_bottom.pack(fill="both", expand=False, padx=10, pady=(4, 10))
 
@@ -195,10 +184,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
             self.file_listbox.insert(tk.END, str(p))
 
     def _invalidate_transitions_due_to_reorder(self) -> None:
-        """
-        順序が大きく変わる操作をしたときに、インデックスずれを避けるため
-        トランジション指定をリセットする。
-        """
         if self.transition_after_indices:
             self.transition_after_indices.clear()
             self._log("ファイル順が変更されたため、トランジション指定をリセットしました。")
@@ -217,7 +202,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self._refresh_listbox()
         self._log(f"{len(paths)} 個のファイルを追加しました。")
 
-        # 出力ファイル未設定なら、最初のファイルのディレクトリに default 名で設定
         if self.files and not self.output_path_var.get():
             first_dir = self.files[0].parent
             default_out = first_dir / "smart_concat_v3_gui.mp4"
@@ -290,10 +274,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
     # ---------------- 自動並び替え (v3 ロジック) ----------------
 
     def on_auto_order_v3(self) -> None:
-        """
-        v3 のロジック (analyze_and_concat_v3) を使って自動並び替えを行い、
-        self.files を「推奨順」に更新します。
-        """
         if not self.files:
             messagebox.showwarning("警告", "自動並び替えの対象となるファイルがありません。")
             return
@@ -306,10 +286,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self._log("必要であれば「上へ」「下へ」で微調整してから、トランジションを指定して連結を実行してください。")
 
     def _auto_order_v3(self, input_paths: list[Path]) -> list[Path]:
-        """
-        analyze_and_concat_v3 の extract_features / build_order を使って
-        連結順を推定します。
-        """
         features: list[dict] = []
         self._log("特徴抽出と順序推定を開始します (v3)...")
         for p in input_paths:
@@ -329,11 +305,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
     # ---------------- トランジション指定 ----------------
 
     def on_add_transition_after_selected(self) -> None:
-        """
-        選択されている行の「直後」にトランジションを挿入する指定を追加します。
-        2 本構成 + 1 箇所指定の場合はクロスフェードを試み、
-        それ以外は黒 1 秒クリップを挿入する通常 concat を行います。
-        """
         if not self.files:
             messagebox.showwarning("警告", "トランジションを挿入する前にファイルを追加してください。")
             return
@@ -361,10 +332,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
     # ---------------- 実行ロジック ----------------
 
     def on_run_concat(self) -> None:
-        """
-        現在リストに表示されている順番 (self.files) のまま連結します。
-        自動並び替えはここでは行わず、必要なら事前に on_auto_order_v3 を使います。
-        """
         if not self.files:
             messagebox.showwarning("警告", "連結する mp4 ファイルを 1 つ以上追加してください。")
             return
@@ -408,10 +375,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
     # ---------------- ffprobe ヘルパ ----------------
 
     def _probe_duration(self, path: Path) -> float | None:
-        """
-        ffprobe でクリップの長さ（秒）を取得します。
-        取得に失敗した場合は None を返します。
-        """
         cmd = [
             "ffprobe",
             "-v",
@@ -446,9 +409,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
             return None
 
     def _has_audio_stream(self, path: Path) -> bool:
-        """
-        指定ファイルに音声ストリームが存在するかを ffprobe で判定します。
-        """
         cmd = [
             "ffprobe",
             "-v",
@@ -478,8 +438,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
             self._log(proc.stderr)
             return False
 
-        has_audio = bool(proc.stdout.strip())
-        return has_audio
+        return bool(proc.stdout.strip())
 
     # ---------------- クロスフェード（2 クリップ専用） ----------------
 
@@ -492,13 +451,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
         width: int,
         height: int,
     ) -> bool:
-        """
-        2 本のクリップ間をクロスフェードで連結します。
-        - 映像のみのとき: xfade のみ。
-        - 映像+音声のとき: xfade + acrossfade。
-        - 成功時: True を返し、messagebox で完了通知。
-        - 失敗時: False を返す（呼び出し側でフォールバック）。
-        """
         if len(input_paths) != 2:
             return False
 
@@ -512,7 +464,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
             self._log("クリップ長の取得に失敗したため、クロスフェードをスキップします。", error=True)
             return False
 
-        # 最大 1.0 秒、かつ各クリップの半分を超えないように調整
         max_dur = 1.0
         t = min(max_dur, d0 / 2.0, d1 / 2.0)
         if t <= 0.1:
@@ -524,7 +475,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self._log(f"clip0 長さ: {d0:.3f} sec, clip1 長さ: {d1:.3f} sec")
         self._log(f"クロスフェード時間: {t:.3f} sec, offset: {offset:.3f} sec")
 
-        # 音声ストリーム有無を判定
         has_a0 = self._has_audio_stream(clip0)
         has_a1 = self._has_audio_stream(clip1)
         self._log(f"clip0 audio: {has_a0}, clip1 audio: {has_a1}")
@@ -532,7 +482,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
         t_str = f"{t:.3f}"
         offset_str = f"{offset:.3f}"
 
-        # 映像のスケール・パディング部分
         vf_chain = (
             f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
             f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
@@ -542,14 +491,14 @@ class SmartVideoConcatV3GUI(tk.Tk):
             "setpts=PTS-STARTPTS[v1];"
         )
 
-        # 音声あり両方 → xfade+acrossfade
         if has_a0 and has_a1:
             af_chain = (
                 "[0:a]asetpts=PTS-STARTPTS[a0];"
                 "[1:a]asetpts=PTS-STARTPTS[a1];"
             )
             xf_chain = (
-                f"[v0][v1]xfade=transition=fade:duration={t_str}:offset={offset_str}[v01];"
+                f"[v0][v1]xfade=transition=fade:duration={t_str}:offset={offset_str}[vxf];"
+                f"[vxf]format=yuv420p[v01];"
                 f"[a0][a1]acrossfade=d={t_str}[a01]"
             )
             filter_complex = vf_chain + af_chain + xf_chain
@@ -573,6 +522,8 @@ class SmartVideoConcatV3GUI(tk.Tk):
                 preset,
                 "-crf",
                 str(crf),
+                "-pix_fmt",
+                "yuv420p",
                 "-c:a",
                 "aac",
                 "-b:a",
@@ -582,10 +533,10 @@ class SmartVideoConcatV3GUI(tk.Tk):
                 str(output_path),
             ]
         else:
-            # 映像のみクロスフェード（音声はなし）
             self._log("音声ストリームが揃っていないため、映像のみクロスフェードを行います。")
             xf_chain = (
-                f"[v0][v1]xfade=transition=fade:duration={t_str}:offset={offset_str}[v01]"
+                f"[v0][v1]xfade=transition=fade:duration={t_str}:offset={offset_str}[vxf];"
+                f"[vxf]format=yuv420p[v01]"
             )
             filter_complex = vf_chain + xf_chain
 
@@ -606,6 +557,8 @@ class SmartVideoConcatV3GUI(tk.Tk):
                 preset,
                 "-crf",
                 str(crf),
+                "-pix_fmt",
+                "yuv420p",
                 "-an",
                 "-movflags",
                 "+faststart",
@@ -646,10 +599,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
     # ---------------- 黒トランジション生成 ----------------
 
     def _ensure_transition_clip(self) -> Path | None:
-        """
-        黒 1 秒トランジションクリップを作成・または再利用します。
-        - 解像度は 1920x1080 固定ですが、後段の scale/pad で出力解像度に揃えられます。
-        """
         base_dir = Path(__file__).resolve().parent
         clip_path = base_dir / TRANSITION_CLIP_NAME
 
@@ -706,12 +655,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
         width: int,
         height: int,
     ) -> None:
-        """
-        連結実行本体。
-        1) 2 本構成 + {0} のトランジション指定 → クロスフェードを試す。
-        2) それ以外 → 黒クリップ挿入（必要なら）＋ concat デマルチプレクサで通常連結。
-        """
-        # 1) 2 本構成 + 1 箇所指定の場合、クロスフェードを試す
         if len(input_paths) == 2 and self.transition_after_indices == {0}:
             self._log("2 クリップ構成かつ 1 箇所のトランジション指定のため、クロスフェードモードを優先します。")
             ok = self._run_ffmpeg_crossfade_two(
@@ -730,11 +673,9 @@ class SmartVideoConcatV3GUI(tk.Tk):
                     error=True,
                 )
 
-        # 2) 通常 concat + 黒トランジション（従来の挙動）
         tmp_dir = Path(tempfile.mkdtemp(prefix="svc_v3_gui_"))
         concat_path = tmp_dir / "concat_list_v3.txt"
 
-        # トランジションクリップの準備（必要なときだけ）
         transition_clip_path: Path | None = None
         if self.transition_after_indices:
             transition_clip_path = self._ensure_transition_clip()
@@ -742,13 +683,10 @@ class SmartVideoConcatV3GUI(tk.Tk):
                 self._log("トランジションクリップの準備に失敗したため、トランジションなしで連結します。", error=True)
                 self.transition_after_indices.clear()
 
-        # concat list を作成
         with concat_path.open("w", encoding="utf-8") as f:
             for idx, p in enumerate(input_paths):
                 posix = p.as_posix().replace("'", "''")
                 f.write(f"file '{posix}'\n")
-
-                # トランジション指定があれば、その直後に黒クリップを挿入
                 if transition_clip_path is not None and idx in self.transition_after_indices:
                     t_posix = transition_clip_path.as_posix().replace("'", "''")
                     f.write(f"file '{t_posix}'\n")
@@ -816,7 +754,6 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self.log_text.insert(tk.END, msg + "\n")
         self.log_text.see(tk.END)
         if error:
-            # 必要であればここでスタイル変更なども可能
             pass
 
 
