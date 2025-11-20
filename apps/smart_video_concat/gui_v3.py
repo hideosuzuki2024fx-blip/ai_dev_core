@@ -20,23 +20,20 @@ class SmartVideoConcatV3GUI(tk.Tk):
       1. ファイルを追加（追加順で一覧表示）
       2. 「自動並び替え (v3 推奨順)」ボタンで、v3 ロジックに基づく推奨順に並び替え
       3. 必要に応じて「上へ」「下へ」で手動微調整
-      4. 必要に応じて「選択の後にトランジション」を押して、トランジションを入れたい境界を指定
-      5. 「連結を実行」で、画面リストに表示されている順とトランジション指定に従って連結
-
-    トランジション仕様:
-      - 2 クリップ構成かつ 1 箇所のトランジション指定（1 番目の後）の場合:
-          -> まずクロスフェードで連結を試みる。
-             * 映像のみのクリップ: 映像だけ xfade。
-             * 映像+音声クリップ: xfade + acrossfade（映像・音声ともクロスフェード）。
-             * クロスフェードに失敗した場合は、通常連結（黒トランジション含む）にフォールバック。
-      - それ以外（3 本以上、複数指定など）の場合:
-          -> 従来通り、指定された位置に黒 1 秒クリップを挿入する concat 連結。
+      4. 必要に応じて「選択の後にトランジション」を押して、黒トランジションを入れたい境界を指定
+      5. 連結方法を選択:
+         - 「連結を実行（表示順のまま）」:
+             * 2 本 + 1 箇所指定 (1 本目の後) のとき → クロスフェード優先
+             * それ以外 → 黒 1 秒クリップ挿入 + concat
+         - 「全区間クロスフェードで連結」:
+             * 現在の表示順の全ての境界をクロスフェードでつなぐ
+             * 音声は「全クリップに音声がある場合のみ」acrossfade、それ以外は映像のみクロスフェード
     """
 
     def __init__(self) -> None:
         super().__init__()
         self.title("smart_video_concat v3 GUI")
-        self.geometry("820x600")
+        self.geometry("860x620")
 
         self.file_listbox: tk.Listbox
         self.files: list[Path] = []
@@ -89,7 +86,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         btn_auto_tr = ttk.Button(
             right,
-            text="選択の後に\nトランジション",
+            text="選択の後に\nトランジション(黒)",
             command=self.on_add_transition_after_selected,
         )
         btn_clear_tr = ttk.Button(
@@ -159,6 +156,13 @@ class SmartVideoConcatV3GUI(tk.Tk):
         )
         btn_auto_order.pack(side="left")
 
+        btn_full_xfade = ttk.Button(
+            btn_row,
+            text="全区間クロスフェードで連結",
+            command=self.on_run_full_crossfade,
+        )
+        btn_full_xfade.pack(side="left", padx=8)
+
         btn_run = ttk.Button(
             btn_row,
             text="連結を実行（表示順のまま）",
@@ -168,13 +172,14 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         self.log_text = tk.Text(
             frame_bottom,
-            height=10,
+            height=12,
             wrap="word",
         )
         self.log_text.pack(fill="both", expand=True)
         self._log("smart_video_concat v3 GUI を起動しました。")
         self._log("現在リストに表示されている順番が、そのまま連結順になります。")
-        self._log("必要に応じて「自動並び替え (v3 推奨順)」とトランジション指定を使ってください。")
+        self._log("・「連結を実行（表示順のまま）」: 黒トランジション + 通常 concat（2 本 + 1 箇所指定のときはクロスフェード）")
+        self._log("・「全区間クロスフェードで連結」: すべての境界をクロスフェードで連結（新機能）")
 
     # ---------------- ファイルリスト操作 ----------------
 
@@ -283,7 +288,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self._refresh_listbox()
         self._invalidate_transitions_due_to_reorder()
         self._log("自動並び替え (v3 推奨順) を適用しました。")
-        self._log("必要であれば「上へ」「下へ」で微調整してから、トランジションを指定して連結を実行してください。")
+        self._log("必要であれば「上へ」「下へ」で微調整してから、トランジションや連結方法を選択してください。")
 
     def _auto_order_v3(self, input_paths: list[Path]) -> list[Path]:
         features: list[dict] = []
@@ -302,7 +307,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         return ordered
 
-    # ---------------- トランジション指定 ----------------
+    # ---------------- トランジション指定（黒トランジション用） ----------------
 
     def on_add_transition_after_selected(self) -> None:
         if not self.files:
@@ -318,7 +323,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
             if 0 <= idx < len(self.files):
                 self.transition_after_indices.add(idx)
 
-        self._log("以下の位置にトランジションを挿入します（クリップ番号は 1 始まり）:")
+        self._log("以下の位置にトランジション（黒 1 秒）を挿入します（クリップ番号は 1 始まり）:")
         for idx in sorted(self.transition_after_indices):
             if idx < len(self.files):
                 self._log(f" - {idx + 1} 番目のクリップの直後")
@@ -329,7 +334,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self.transition_after_indices.clear()
         self._log("トランジション指定をすべてクリアしました。")
 
-    # ---------------- 実行ロジック ----------------
+    # ---------------- 実行ロジック（通常連結ボタン） ----------------
 
     def on_run_concat(self) -> None:
         if not self.files:
@@ -359,7 +364,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         output_path = Path(output_str)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._log("連結処理を開始します...")
+        self._log("連結処理を開始します（通常モード／黒トランジション対応）...")
         self._log(f"- 入力ファイル数: {len(self.files)}")
         self._log(f"- 出力: {output_path}")
         self._log(f"- CRF: {crf}, preset: {preset}, size: {width}x{height}")
@@ -371,6 +376,52 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         ordered_files = list(self.files)
         self._run_ffmpeg_concat(ordered_files, output_path, crf, preset, width, height)
+
+    # ---------------- 実行ロジック（全区間クロスフェードボタン） ----------------
+
+    def on_run_full_crossfade(self) -> None:
+        if len(self.files) < 2:
+            messagebox.showwarning("警告", "全区間クロスフェードには 2 本以上のクリップが必要です。")
+            return
+
+        output_str = self.output_path_var.get().strip()
+        if not output_str:
+            messagebox.showwarning("警告", "出力ファイルを指定してください。")
+            return
+
+        try:
+            crf = int(self.crf_var.get().strip())
+        except ValueError:
+            messagebox.showwarning("警告", "CRF には整数値を入力してください。")
+            return
+
+        try:
+            width = int(self.width_var.get().strip())
+            height = int(self.height_var.get().strip())
+        except ValueError:
+            messagebox.showwarning("警告", "幅・高さには整数値を入力してください。")
+            return
+
+        preset = self.preset_var.get().strip() or "veryfast"
+
+        output_path = Path(output_str)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self._log("全区間クロスフェードモードで連結を開始します...")
+        self._log(f"- 入力ファイル数: {len(self.files)}")
+        self._log(f"- 出力: {output_path}")
+        self._log(f"- CRF: {crf}, preset: {preset}, size: {width}x{height}")
+        self._log("- すべての境界をクロスフェードします（トランジション指定は無視されます）。")
+
+        ordered_files = list(self.files)
+        self._run_ffmpeg_full_crossfade_chain(
+            ordered_files,
+            output_path,
+            crf,
+            preset,
+            width,
+            height,
+        )
 
     # ---------------- ffprobe ヘルパ ----------------
 
@@ -393,7 +444,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
                 text=True,
             )
         except FileNotFoundError:
-            self._log("ffprobe が見つからないため、クロスフェード用の長さ取得に失敗しました。", error=True)
+            self._log("ffprobe が見つからないため、長さ取得に失敗しました。", error=True)
             return None
 
         if proc.returncode != 0:
@@ -440,7 +491,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
 
         return bool(proc.stdout.strip())
 
-    # ---------------- クロスフェード（2 クリップ専用） ----------------
+    # ---------------- クロスフェード（2 クリップ専用：通常ボタン用） ----------------
 
     def _run_ffmpeg_crossfade_two(
         self,
@@ -596,6 +647,177 @@ class SmartVideoConcatV3GUI(tk.Tk):
         messagebox.showinfo("完了", f"クロスフェード連結が完了しました。\n\n出力: {output_path}")
         return True
 
+    # ---------------- 全区間クロスフェード（N 本対応） ----------------
+
+    def _run_ffmpeg_full_crossfade_chain(
+        self,
+        input_paths: list[Path],
+        output_path: Path,
+        crf: int,
+        preset: str,
+        width: int,
+        height: int,
+    ) -> None:
+        """
+        現在の表示順のすべての境界をクロスフェードでつなぐ。
+        - 映像: 必ず xfade チェーン
+        - 音声: 全クリップに音声がある場合のみ acrossfade チェーン
+        """
+        n = len(input_paths)
+        if n < 2:
+            messagebox.showwarning("警告", "全区間クロスフェードには 2 本以上のクリップが必要です。")
+            return
+
+        # 長さを取得
+        durations: list[float] = []
+        for p in input_paths:
+            d = self._probe_duration(p)
+            if d is None:
+                self._log(f"長さ取得に失敗したクリップがあります: {p}", error=True)
+                messagebox.showerror("エラー", f"ffprobe による長さ取得に失敗しました。\n問題のファイル: {p}")
+                return
+            durations.append(d)
+
+        # クロスフェード時間 t を決定（最大 1.0 秒、かつ各クリップ長の半分以下）
+        min_d = min(durations)
+        max_t = 1.0
+        t = min(max_t, min_d / 2.0)
+        if t <= 0.1:
+            self._log("クロスフェード時間が十分に取れないため、全区間クロスフェードを中止します。", error=True)
+            messagebox.showerror(
+                "エラー",
+                "クロスフェード時間を十分に確保できませんでした。\n非常に短いクリップが含まれていないか確認してください。",
+            )
+            return
+
+        # 各フェードの offset を計算
+        # prefix_durs[j] = 0..j までの長さの合計
+        prefix_durs: list[float] = []
+        acc = 0.0
+        for d in durations:
+            acc += d
+            prefix_durs.append(acc)
+
+        offsets: list[float] = []
+        for j in range(n - 1):
+            # j 番目のフェード（clip_j と clip_{j+1} の境界）
+            # offset_j = sum(d0..dj) - (j+1)*t
+            offset_j = prefix_durs[j] - (j + 1) * t
+            if offset_j < 0:
+                offset_j = 0.0
+            offsets.append(offset_j)
+
+        self._log("全区間クロスフェード用の長さと offset:")
+        for idx, d in enumerate(durations):
+            self._log(f"  clip{idx}: {d:.3f} sec")
+        for j, off in enumerate(offsets):
+            self._log(f"  フェード {j}: offset={off:.3f} sec (clip{j}→clip{j+1})")
+
+        # 音声ストリームの有無を確認
+        audio_flags = [self._has_audio_stream(p) for p in input_paths]
+        has_any_audio = any(audio_flags)
+        audio_all = all(audio_flags) and has_any_audio
+
+        if not has_any_audio:
+            self._log("どのクリップにも音声ストリームがないため、映像のみクロスフェードします。")
+        elif not audio_all:
+            self._log(
+                "一部のクリップにのみ音声ストリームがあるため、全区間クロスフェードでは音声を無効化します。",
+                error=True,
+            )
+            self._log(f"音声あり/なしフラグ: {audio_flags}")
+        else:
+            self._log("全てのクリップに音声ストリームがあるため、映像 + 音声のクロスフェードを行います。")
+
+        t_str = f"{t:.3f}"
+
+        filter_parts: list[str] = []
+
+        # 映像・音声の事前処理
+        for i in range(n):
+            filter_parts.append(
+                f"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,"
+                f"setpts=PTS-STARTPTS[v{i}];"
+            )
+            if audio_all:
+                filter_parts.append(
+                    f"[{i}:a]asetpts=PTS-STARTPTS[a{i}];"
+                )
+
+        # xfade / acrossfade チェーン
+        prev_v = "v0"
+        prev_a = "a0" if audio_all else None
+
+        for j in range(n - 1):
+            off = offsets[j]
+            off_str = f"{off:.3f}"
+            v_out = f"vxf{j}"
+            filter_parts.append(
+                f"[{prev_v}][v{j+1}]xfade=transition=fade:duration={t_str}:offset={off_str}[{v_out}];"
+            )
+            prev_v = v_out
+
+            if audio_all and prev_a is not None:
+                a_out = f"axf{j}"
+                filter_parts.append(
+                    f"[{prev_a}][a{j+1}]acrossfade=d={t_str}[{a_out}];"
+                )
+                prev_a = a_out
+
+        # 最終出力ラベル
+        filter_parts.append(f"[{prev_v}]format=yuv420p[vout];")
+        if audio_all and prev_a is not None:
+            aout_label = prev_a
+        else:
+            aout_label = None
+
+        filter_complex = "".join(filter_parts)
+
+        # ffmpeg コマンド組み立て
+        cmd: list[str] = [FFMPEG_CMD, "-y"]
+        for p in input_paths:
+            cmd.extend(["-i", str(p)])
+        cmd.extend(["-filter_complex", filter_complex, "-map", "[vout]"])
+        cmd.extend(["-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"])
+
+        if aout_label is not None:
+            cmd.extend(["-map", f"[{aout_label}]", "-c:a", "aac", "-b:a", "192k"])
+        else:
+            cmd.extend(["-an"])
+
+        cmd.extend(["-movflags", "+faststart", str(output_path)])
+
+        self._log("ffmpeg 全区間クロスフェードコマンド:")
+        self._log(" ".join(cmd))
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except FileNotFoundError:
+            self._log("エラー: ffmpeg コマンドが見つかりません。PATH 設定を確認してください。", error=True)
+            messagebox.showerror("エラー", "ffmpeg が見つかりませんでした。PATH の設定を確認してください。")
+            return
+
+        if proc.returncode != 0:
+            self._log("ffmpeg（全区間クロスフェード）の実行に失敗しました。", error=True)
+            self._log(proc.stdout)
+            self._log(proc.stderr)
+            messagebox.showerror(
+                "エラー",
+                "全区間クロスフェードの実行に失敗しました。ログを確認してください。",
+            )
+            return
+
+        self._log("全区間クロスフェードの実行が正常に完了しました。")
+        self._log(proc.stdout)
+        self._log(proc.stderr)
+        messagebox.showinfo("完了", f"全区間クロスフェード連結が完了しました。\n\n出力: {output_path}")
+
     # ---------------- 黒トランジション生成 ----------------
 
     def _ensure_transition_clip(self) -> Path | None:
@@ -644,7 +866,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         self._log(f"トランジションクリップを作成しました: {clip_path}")
         return clip_path
 
-    # ---------------- concat 実行本体 ----------------
+    # ---------------- concat 実行本体（通常モード） ----------------
 
     def _run_ffmpeg_concat(
         self,
@@ -655,6 +877,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         width: int,
         height: int,
     ) -> None:
+        # 2 クリップ + 1 箇所指定 (1 本目の後) のときはクロスフェード優先
         if len(input_paths) == 2 and self.transition_after_indices == {0}:
             self._log("2 クリップ構成かつ 1 箇所のトランジション指定のため、クロスフェードモードを優先します。")
             ok = self._run_ffmpeg_crossfade_two(
