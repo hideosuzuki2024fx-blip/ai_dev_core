@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>smart_video_concat v3 クライアント</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: radial-gradient(circle at top left, #e0f2fe 0, #eef2ff 40%, #e5e7eb 100%);
+        }
+        .container-bg {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(16px);
+        }
+        .drop-active {
+            border-color: #4f46e5 !important;
+            background-color: #eef2ff !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+<div class="container-bg shadow-2xl rounded-3xl p-8 w-full max-w-4xl">
+    <h1 class="text-3xl md:text-4xl font-bold text-center text-indigo-800 mb-4">
+        smart_video_concat v3 ローカルクライアント
+    </h1>
+    <p class="text-center text-gray-600 mb-6">
+        先に <code class="px-1 py-0.5 bg-gray-100 rounded text-sm">run_server_v3.ps1</code> を起動し、
+        この画面からローカルサーバーへ mp4 を D&amp;D して連結します。
+    </p>
+
+    <!-- サーバ設定 -->
+    <div class="mb-6 p-4 rounded-2xl bg-indigo-50 border border-indigo-100">
+        <h2 class="text-xl font-semibold text-indigo-700 mb-2">サーバ設定</h2>
+        <label class="block text-sm text-gray-700 mb-1" for="server-url">
+            エンドポイント URL
+        </label>
+        <input
+            id="server-url"
+            type="text"
+            class="w-full px-3 py-2 rounded-xl border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+            value="http://127.0.0.1:5005/api/smart_video_concat_v3"
+        >
+        <p class="mt-1 text-xs text-gray-500">
+            通常は既定値のままで構いません。ポートやパスを変更した場合のみ書き換えてください。
+        </p>
+    </div>
+
+    <!-- D&D エリア -->
+    <div class="mb-6">
+        <h2 class="text-xl font-semibold text-indigo-700 mb-2">🎞 動画ファイルの選択</h2>
+        <div
+            id="drop-area"
+            class="border-2 border-dashed border-indigo-300 rounded-2xl p-6 text-center bg-white cursor-pointer transition-colors duration-200"
+        >
+            <p class="font-medium text-gray-700">ここに mp4 ファイルをドラッグ＆ドロップ</p>
+            <p class="text-sm text-gray-500 mt-1">またはクリックしてファイルを選択</p>
+            <input id="file-input" type="file" accept="video/mp4" multiple class="hidden">
+        </div>
+
+        <div id="file-list-wrapper" class="mt-4 hidden">
+            <h3 class="text-sm font-semibold text-gray-700 mb-1">選択中のファイル（連結順）</h3>
+            <ul id="file-list" class="text-sm text-gray-700 bg-gray-50 rounded-2xl p-3 space-y-1 max-h-40 overflow-y-auto"></ul>
+            <p class="mt-1 text-xs text-gray-500">
+                上から順に連結されます。同じファイルを再度 D&amp;D すると末尾に追加されます。
+            </p>
+        </div>
+    </div>
+
+    <!-- エンコード設定 -->
+    <div class="mb-6 p-4 rounded-2xl bg-white border border-gray-100">
+        <h2 class="text-xl font-semibold text-indigo-700 mb-3">エンコード設定</h2>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label for="crf" class="block text-sm font-medium text-gray-700 mb-1">CRF</label>
+                <input
+                    id="crf"
+                    type="number"
+                    min="0"
+                    max="51"
+                    value="20"
+                    class="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                >
+                <p class="mt-1 text-xs text-gray-500">小さいほど高画質・ファイル大</p>
+            </div>
+            <div>
+                <label for="preset" class="block text-sm font-medium text-gray-700 mb-1">preset</label>
+                <select
+                    id="preset"
+                    class="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                >
+                    <option value="ultrafast">ultrafast</option>
+                    <option value="superfast">superfast</option>
+                    <option value="veryfast" selected>veryfast</option>
+                    <option value="faster">faster</option>
+                    <option value="fast">fast</option>
+                    <option value="medium">medium</option>
+                </select>
+                <p class="mt-1 text-xs text-gray-500">遅いほど高圧縮・高画質</p>
+            </div>
+            <div>
+                <label for="width" class="block text-sm font-medium text-gray-700 mb-1">出力幅</label>
+                <input
+                    id="width"
+                    type="number"
+                    value="1920"
+                    class="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                >
+            </div>
+            <div>
+                <label for="height" class="block text-sm font-medium text-gray-700 mb-1">出力高さ</label>
+                <input
+                    id="height"
+                    type="number"
+                    value="1080"
+                    class="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                >
+            </div>
+        </div>
+        <p class="mt-3 text-xs text-gray-500">
+            アスペクト比は v3 と同様、
+            <code>scale=…:force_original_aspect_ratio=decrease,pad=…:setsar=1,format=yuv420p</code>
+            で 16:9 に正規化されます。
+        </p>
+    </div>
+
+    <!-- 実行ボタン＆ステータス -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <button
+            id="run-btn"
+            class="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm shadow-md transition transform hover:scale-[1.01] disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+            <span id="run-btn-label">連結を実行</span>
+            <span id="run-btn-spinner" class="hidden ml-2 animate-spin border-2 border-white border-t-transparent rounded-full w-4 h-4"></span>
+        </button>
+        <div id="status" class="text-sm text-gray-600 min-h-[1.5rem]"></div>
+    </div>
+
+    <div id="download-area" class="mt-4 hidden">
+        <a
+            id="download-link"
+            href="#"
+            download="smart_concat_v3.mp4"
+            class="inline-flex items-center px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium shadow-md transition"
+        >
+            連結結果をダウンロード
+        </a>
+        <p class="mt-1 text-xs text-gray-500">
+            ブラウザの仕様により、再度ダウンロードする場合はもう一度連結を実行してください。
+        </p>
+    </div>
+</div>
+
+<script>
+(function () {
+    const dropArea = document.getElementById("drop-area");
+    const fileInput = document.getElementById("file-input");
+    const fileListWrapper = document.getElementById("file-list-wrapper");
+    const fileList = document.getElementById("file-list");
+    const serverUrlInput = document.getElementById("server-url");
+    const crfInput = document.getElementById("crf");
+    const presetSelect = document.getElementById("preset");
+    const widthInput = document.getElementById("width");
+    const heightInput = document.getElementById("height");
+    const runBtn = document.getElementById("run-btn");
+    const runBtnLabel = document.getElementById("run-btn-label");
+    const runBtnSpinner = document.getElementById("run-btn-spinner");
+    const statusEl = document.getElementById("status");
+    const downloadArea = document.getElementById("download-area");
+    const downloadLink = document.getElementById("download-link");
+
+    /** @type {File[]} */
+    let selectedFiles = [];
+
+    function updateFileList() {
+        fileList.innerHTML = "";
+        if (selectedFiles.length === 0) {
+            fileListWrapper.classList.add("hidden");
+            return;
+        }
+        fileListWrapper.classList.remove("hidden");
+        selectedFiles.forEach((file, idx) => {
+            const li = document.createElement("li");
+            li.textContent = `${idx + 1}. ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
+            fileList.appendChild(li);
+        });
+    }
+
+    function addFiles(files) {
+        const newFiles = Array.from(files).filter(f => f && f.type === "video/mp4");
+        if (newFiles.length === 0) {
+            setStatus("mp4 以外のファイルは無視されます。", "text-amber-600");
+            return;
+        }
+        selectedFiles = selectedFiles.concat(newFiles);
+        updateFileList();
+        clearStatusIfOk();
+    }
+
+    function setStatus(msg, cls) {
+        statusEl.textContent = msg || "";
+        statusEl.className = "text-sm " + (cls || "text-gray-600");
+    }
+
+    function clearStatusIfOk() {
+        if (statusEl.className.includes("text-red") || statusEl.className.includes("text-amber")) {
+            return;
+        }
+        statusEl.textContent = "";
+        statusEl.className = "text-sm text-gray-600";
+    }
+
+    // D&D イベント
+    ["dragenter", "dragover"].forEach(ev => {
+        dropArea.addEventListener(ev, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropArea.classList.add("drop-active");
+        });
+    });
+
+    ["dragleave", "drop"].forEach(ev => {
+        dropArea.addEventListener(ev, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropArea.classList.remove("drop-active");
+        });
+    });
+
+    dropArea.addEventListener("drop", function (e) {
+        const dt = e.dataTransfer;
+        if (!dt) return;
+        if (dt.files && dt.files.length > 0) {
+            addFiles(dt.files);
+        }
+    });
+
+    dropArea.addEventListener("click", function () {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener("change", function (e) {
+        if (e.target.files) {
+            addFiles(e.target.files);
+        }
+        // 再度同じファイルを選択できるようにリセット
+        fileInput.value = "";
+    });
+
+    async function runConcat() {
+        const url = serverUrlInput.value.trim();
+        if (!url) {
+            setStatus("エンドポイント URL を入力してください。", "text-red-600");
+            return;
+        }
+        if (selectedFiles.length === 0) {
+            setStatus("連結する mp4 ファイルを 1 つ以上選択してください。", "text-red-600");
+            return;
+        }
+
+        const crf = crfInput.value.trim();
+        const preset = presetSelect.value;
+        const width = widthInput.value.trim();
+        const height = heightInput.value.trim();
+
+        const formData = new FormData();
+        selectedFiles.forEach(file => {
+            formData.append("files", file, file.name);
+        });
+        if (crf !== "") formData.append("crf", crf);
+        if (preset) formData.append("preset", preset);
+        if (width !== "") formData.append("width", width);
+        if (height !== "") formData.append("height", height);
+
+        runBtn.disabled = true;
+        runBtnSpinner.classList.remove("hidden");
+        runBtnLabel.textContent = "連結処理中…";
+        setStatus("サーバーへリクエスト送信中…", "text-gray-600");
+        downloadArea.classList.add("hidden");
+        downloadLink.href = "#";
+
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                body: formData
+            });
+
+            const contentType = response.headers.get("content-type") || "";
+
+            if (!response.ok) {
+                if (contentType.includes("application/json")) {
+                    const data = await response.json().catch(() => ({}));
+                    const msg = data.error || `HTTP エラー: ${response.status}`;
+                    setStatus(msg, "text-red-600");
+                } else {
+                    setStatus(`HTTP エラー: ${response.status}`, "text-red-600");
+                }
+                return;
+            }
+
+            if (contentType.includes("application/json")) {
+                const data = await response.json().catch(() => ({}));
+                const msg = data.error || "サーバーから JSON 応答が返されました。";
+                setStatus(msg, "text-red-600");
+                return;
+            }
+
+            const blob = await response.blob();
+            if (!blob || blob.size === 0) {
+                setStatus("応答は成功しましたが、動画データが空のようです。", "text-amber-600");
+                return;
+            }
+
+            const blobUrl = URL.createObjectURL(blob);
+            downloadLink.href = blobUrl;
+            downloadLink.download = "smart_concat_v3.mp4";
+            downloadArea.classList.remove("hidden");
+            setStatus("連結が完了しました。ダウンロードリンクから保存できます。", "text-emerald-600");
+
+            // 自動クリックで即ダウンロード
+            setTimeout(() => {
+                downloadLink.click();
+            }, 200);
+
+        } catch (err) {
+            console.error(err);
+            setStatus("リクエスト送信中にエラーが発生しました。サーバーの起動状態と CORS を確認してください。", "text-red-600");
+        } finally {
+            runBtn.disabled = false;
+            runBtnSpinner.classList.add("hidden");
+            runBtnLabel.textContent = "連結を実行";
+        }
+    }
+
+    runBtn.addEventListener("click", function () {
+        runConcat();
+    });
+})();
+</script>
+</body>
+</html>

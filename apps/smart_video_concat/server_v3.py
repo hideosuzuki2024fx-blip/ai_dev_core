@@ -7,13 +7,24 @@ from pathlib import Path
 from typing import List, Tuple
 
 from flask import Flask, jsonify, request, send_file
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 TMP_ROOT = BASE_DIR / "tmp"
 TMP_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+@app.after_request
+def add_cors_headers(response):
+    """
+    シンプルな CORS ヘッダ付与。
+    - file:// で開いた HTML から http://127.0.0.1:5005 へアクセスする用途を想定。
+    """
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    return response
 
 
 def run_ffmpeg_concat(
@@ -104,7 +115,7 @@ def _to_int(value, default):
         return default
 
 
-@app.route("/api/smart_video_concat_v3", methods=["POST"])
+@app.route("/api/smart_video_concat_v3", methods=["POST", "OPTIONS"])
 def smart_video_concat_v3():
     """
     POST /api/smart_video_concat_v3
@@ -120,6 +131,10 @@ def smart_video_concat_v3():
       - 成功時: smart_concat_v3.mp4 をバイナリで返す (Content-Type: video/mp4)
       - 失敗時: JSON エラーと 4xx/5xx
     """
+    if request.method == "OPTIONS":
+        # CORS プリフライト
+        return ("", 204)
+
     if "files" not in request.files:
         return jsonify(
             {"error": "multipart/form-data の files フィールドに mp4 を指定してください。"}
