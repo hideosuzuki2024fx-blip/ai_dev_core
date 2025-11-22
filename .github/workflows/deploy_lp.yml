@@ -12,8 +12,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: "pages"
@@ -22,9 +20,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install pandoc
         run: |
@@ -35,11 +34,16 @@ jobs:
         run: |
           set -e
           mkdir -p public
+
+          # ops/ai_policy.md -> public/ops/ai_policy.html
           if [ -f ops/ai_policy.md ]; then
             SRC="ops/ai_policy.md"
             OUT="public/ops/ai_policy.html"
+            mkdir -p "$(dirname "$OUT")"
             pandoc "$SRC" -s -o "$OUT" --metadata title="AI Policy"
           fi
+
+          # index.html 用のソース決定
           if [ -f docs/product/LP_EmotionCut.md ]; then
             INDEX_SRC="docs/product/LP_EmotionCut.md"
           elif [ -f README.md ]; then
@@ -47,6 +51,8 @@ jobs:
           elif [ -f START_HERE.md ]; then
             INDEX_SRC="START_HERE.md"
           fi
+
+          # index.html を生成 (fallback 付き)
           if [ -n "${INDEX_SRC:-}" ]; then
             pandoc "$INDEX_SRC" -s -o public/index.html --metadata title="ai_dev_core"
           else
@@ -57,16 +63,23 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: public
 
   deploy:
     needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
