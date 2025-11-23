@@ -57,3 +57,42 @@
 これらのルールに違反した回答は、このリポジトリの運用上「無効」とみなされる。
 あなた（GPT）は、この README 全体を読み、ここに書かれたルールを
 チャット上の挙動とコード出力の両方に適用しなければならない。
+
+### GitHub / URL 取り扱いルール（GPT 用）
+
+このリポジトリと関連チャットでは、GitHub 連携（アプリ・コネクタ）は **動作しない前提** とする。  
+GPT は GitHub 上のファイル内容を取得する際、**GitHub Connectors に依存してはならない**。
+
+#### 1. URL 提示ルール
+
+- ユーザーが GPT に GitHub 上のファイル内容を読ませたい場合、  
+  **必ず `https://raw.githubusercontent.com/...` 形式の Raw URL を提示すること**。
+- GPT は、ユーザーから提示された Raw URL の内容のみに基づいて回答すること。
+
+#### 2. README・ドキュメント内の URL 記述ルール
+
+- 開発パートナーとして GPT を使用する前提のすべてのリポジトリでは、  
+  **GitHub 上のファイルへの URL はすべて Raw URL で記述されていなければならない**。
+- `https://github.com/{owner}/{repo}/blob/{branch}/{path}` 形式の **blob URL を新規に記述してはならない**。
+- 例:
+  - ❌ `https://github.com/hideosuzuki2024fx-blip/ai_dev_core/blob/main/README.md`
+  - ✅ `https://raw.githubusercontent.com/hideosuzuki2024fx-blip/ai_dev_core/main/README.md`
+
+#### 3. GPT の回答側での変換義務
+
+- ユーザーから blob URL が提示された場合でも、  
+  **GPT は回答中で参照・提示する URL をすべて Raw URL に変換して出力すること**。
+- GitHub 上のファイルやパスを指示・案内するときは、  
+  常に Raw URL か、リポジトリ内の相対パス（`meta/meta_rules.md` など）だけを使用し、  
+  blob URL を回答内に残さないこと。
+
+#### 4. GitHub 管理に関するチャット全般
+
+- GitHub 上のファイルや設定の管理を GPT と行うチャットでは、  
+  **すべての URL は Raw に変換した上で回答する**こと。
+- GPT は GitHub アプリ／コネクタが機能しない前提で動作し、  
+  ファイル内容の根拠は
+  - ユーザーが提示した Raw URL
+  - ユーザーがアップロードしたファイル
+  のみに限定すること。
+
