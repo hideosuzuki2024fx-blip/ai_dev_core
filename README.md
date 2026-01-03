@@ -124,3 +124,22 @@ Actions から NoteOps を利用するには、以下のいずれかが必要。
 - ctions/openapi.yaml を GPTs Actions に取り込み
 - すべての書き込み系リクエストに X-NoteOps-Token を付与（値は機密として扱う）
 
+
+### 11.1 開発：Quick Tunnel手順（Cloudflare）
+前提：	ools/bin/cloudflared.exe を配置済み（バイナリはコミットしない）
+
+1) NoteOps 起動（別ウィンドウ）
+- .\tools\noteops\run-noteops.ps1 -Token <TOKEN>
+
+2) トンネル起動＋OpenAPI更新（別ウィンドウ）
+- .\tools\noteops\run-tunnel-dev.ps1 -Commit
+  - trycloudflare の URL を抽出して ctions/openapi.yaml を更新
+  - logs/meta/YYYYMMDD_tunnel_url_meta.md を生成
+  - Reviewコミットまで実施
+
+3) GPTs Actions 側
+- ctions/openapi.yaml を取り込み（更新）
+- X-NoteOps-Token を設定
+- GET /debug/repo → OK
+- POST /log/append → OK
+
