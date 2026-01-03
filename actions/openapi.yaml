@@ -1,0 +1,99 @@
+openapi: 3.0.3
+info:
+  title: NoteOps API (Yoshio-Optimized NoteGenerator)
+  version: 0.2.0
+servers:
+  - url: http://127.0.0.1:8711
+
+components:
+  securitySchemes:
+    NoteOpsToken:
+      type: apiKey
+      in: header
+      name: X-NoteOps-Token
+
+# NOTEOPS_TOKEN が設定されている場合、書き込み系はトークン必須。
+# ローカル開発で NOTEOPS_TOKEN を未設定にする場合は、サーバ側で認証が無効になります。
+security:
+  - NoteOpsToken: []
+
+paths:
+  /debug/repo:
+    get:
+      operationId: debugRepo
+      responses:
+        "200": { description: OK }
+
+  /repo/status:
+    get:
+      operationId: repoStatus
+      responses:
+        "200": { description: OK }
+
+  /note/write:
+    post:
+      operationId: noteWrite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [layer, path, content]
+              properties:
+                layer: { type: string, enum: ["0_raw","1_mash","2_ferment","3_article"] }
+                path: { type: string }
+                content: { type: string }
+                mode: { type: string, enum: ["overwrite","append"], default: "overwrite" }
+      responses:
+        "200": { description: OK }
+
+  /log/append:
+    post:
+      operationId: logAppend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, path, content]
+              properties:
+                kind: { type: string, enum: ["critique","error","meta"] }
+                path: { type: string }
+                content: { type: string }
+                mode: { type: string, enum: ["overwrite","append"], default: "append" }
+      responses:
+        "200": { description: OK }
+
+  /normalize/run:
+    post:
+      operationId: normalizeRun
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                root: { type: string, default: "." }
+      responses:
+        "200": { description: OK }
+
+  /git/commit:
+    post:
+      operationId: gitCommitWithGovernance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, ayase_approve, amy_approve, decision_ref]
+              properties:
+                message: { type: string }
+                ayase_approve: { type: boolean }
+                amy_approve: { type: boolean }
+                decision_ref: { type: string }
+      responses:
+        "200": { description: OK }
