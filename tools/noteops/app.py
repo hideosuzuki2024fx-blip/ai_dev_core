@@ -7,22 +7,13 @@ import subprocess
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
-
-from fastapi import Header
-
-def _require_token(x_noteops_token: str | None):
-    """
-    If NOTEOPS_TOKEN is set, require matching X-NoteOps-Token header.
-    If NOTEOPS_TOKEN is empty, allow (local-dev mode).
-    NOTE: token is read per-request (no import-time caching).
-    """
-    token = os.getenv("NOTEOPS_TOKEN", "").strip()
-    if token:
-        if not x_noteops_token or x_noteops_token.strip() != token:
-            raise HTTPException(status_code=401, detail="Unauthorized: missing or invalid X-NoteOps-Token")
+APP_TITLE = "NoteOps API (Yoshio-Optimized NoteGenerator)"
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8711
+RE_COMMIT_PREFIX = re.compile(r"^(Draft|Review|Final):\s.+")
 
 Layer = Literal["0_raw", "1_mash", "2_ferment", "3_article"]
 Mode = Literal["overwrite", "append"]
@@ -32,16 +23,11 @@ def _run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
 
 def _discover_repo_top() -> Path:
-    """
-    Determine git repo top reliably.
-    - Prefer: git rev-parse --show-toplevel executed from this file's directory.
-    - Fallback: parents[3] (legacy) if git is unavailable.
-    """
     here = Path(__file__).resolve().parent
     r = _run(["git", "rev-parse", "--show-toplevel"], cwd=here)
     if r.returncode == 0 and (r.stdout or "").strip():
         return Path(r.stdout.strip()).resolve()
-    # fallback (may be wrong if folder depth changes)
+    # fallback
     return Path(__file__).resolve().parents[3]
 
 REPO_TOP = _discover_repo_top()
@@ -111,7 +97,21 @@ def _ensure_allowed_path(rel: str) -> str:
         raise HTTPException(status_code=403, detail="resolved path escapes repo")
     return rel_n
 
-app = FastAPI(title=APP_TITLE, version="0.2.0")
+def _token_enabled() -> bool:
+    return bool(os.getenv("NOTEOPS_TOKEN", "").strip())
+
+def _require_token(x_noteops_token: str | None):
+    """
+    If NOTEOPS_TOKEN is set, require matching X-NoteOps-Token header.
+    If NOTEOPS_TOKEN is empty, allow (local-dev mode).
+    Token is read per-request (no import-time caching).
+    """
+    token = os.getenv("NOTEOPS_TOKEN", "").strip()
+    if token:
+        if not x_noteops_token or x_noteops_token.strip() != token:
+            raise HTTPException(status_code=401, detail="Unauthorized: missing or invalid X-NoteOps-Token")
+
+app = FastAPI(title=APP_TITLE, version="0.3.0")
 
 class RepoStatus(BaseModel):
     topLevel: str
@@ -119,24 +119,22 @@ class RepoStatus(BaseModel):
     isClean: bool
     porcelain: str
 
-@app.get("/repo/status", response_model=RepoStatus)
-def repo_status():
-    try:
-        top = _run_git(["rev-parse", "--show-toplevel"])
-        branch = _run_git(["branch", "--show-current"])
-        porcelain = _run_git(["status", "--porcelain"])
-        return RepoStatus(topLevel=top, branch=branch, isClean=(porcelain.strip() == ""), porcelain=porcelain)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"/repo/status failed: {e}")
-
 @app.get("/debug/repo")
 def debug_repo():
-    # helps diagnose REPO_TOP mismatch quickly
-    return {"tokenEnabled": bool(os.getenv("NOTEOPS_TOKEN","").strip()), "repoTop": str(REPO_TOP),
+    return {
+        "repoTop": str(REPO_TOP),
         "cwd": os.getcwd(),
         "appFile": str(Path(__file__).resolve()),
-        "gitTopCheck": _run(["git","rev-parse","--show-toplevel"], cwd=REPO_TOP).stdout.strip()
+        "tokenEnabled": _token_enabled(),
+        "gitTopCheck": _run(["git", "rev-parse", "--show-toplevel"], cwd=REPO_TOP).stdout.strip(),
     }
+
+@app.get("/repo/status", response_model=RepoStatus)
+def repo_status():
+    top = _run_git(["rev-parse", "--show-toplevel"])
+    branch = _run_git(["branch", "--show-current"])
+    porcelain = _run_git(["status", "--porcelain"])
+    return RepoStatus(topLevel=top, branch=branch, isClean=(porcelain.strip() == ""), porcelain=porcelain)
 
 class NoteWriteIn(BaseModel):
     layer: Layer
@@ -151,6 +149,7 @@ class NoteWriteOut(BaseModel):
 
 @app.post("/note/write", response_model=NoteWriteOut)
 def note_write(inp: NoteWriteIn, x_noteops_token: str | None = Header(default=None)):
+    _require_token(x_noteops_token)
     rel = _ensure_allowed_path(f"NoteMD/{inp.layer}/{_norm_rel(inp.path)}")
     abs_p = _to_abs(rel)
     sha_before = _sha256_file(abs_p) if abs_p.exists() else None
@@ -166,24 +165,26 @@ class LogAppendIn(BaseModel):
 
 @app.post("/log/append")
 def log_append(inp: LogAppendIn, x_noteops_token: str | None = Header(default=None)):
+    _require_token(x_noteops_token)
     rel = _ensure_allowed_path(f"logs/{inp.kind}/{_norm_rel(inp.path)}")
     abs_p = _to_abs(rel)
     _write_text_utf8_lf(abs_p, inp.content, inp.mode or "append")
-    return {"tokenEnabled": bool(os.getenv("NOTEOPS_TOKEN","").strip()), "ok": True, "writtenPath": rel}
+    return {"ok": True, "writtenPath": rel}
 
 class NormalizeIn(BaseModel):
     root: Optional[str] = "."
 
 @app.post("/normalize/run")
 def normalize_run(inp: NormalizeIn, x_noteops_token: str | None = Header(default=None)):
+    _require_token(x_noteops_token)
     script = REPO_TOP / "tools" / "normalize-utf8lf.ps1"
     if script.exists():
         root = inp.root or "."
         r = _run(["powershell","-ExecutionPolicy","Bypass","-File",str(script),"-Root",root], cwd=REPO_TOP)
         if r.returncode != 0:
             raise HTTPException(status_code=500, detail=(r.stderr or r.stdout or "normalize failed").strip())
-        return {"tokenEnabled": bool(os.getenv("NOTEOPS_TOKEN","").strip()), "ok": True, "method": "powershell", "output": (r.stdout or "").strip()}
-    return {"tokenEnabled": bool(os.getenv("NOTEOPS_TOKEN","").strip()), "ok": True, "method": "noop", "output": "tools/normalize-utf8lf.ps1 not found"}
+        return {"ok": True, "method": "powershell", "output": (r.stdout or "").strip()}
+    return {"ok": True, "method": "noop", "output": "tools/normalize-utf8lf.ps1 not found"}
 
 class GitCommitIn(BaseModel):
     message: str
@@ -205,6 +206,7 @@ def _stage_allowlisted():
 
 @app.post("/git/commit", response_model=GitCommitOut)
 def git_commit(inp: GitCommitIn, x_noteops_token: str | None = Header(default=None)):
+    _require_token(x_noteops_token)
     if not (inp.ayase_approve and inp.amy_approve):
         return GitCommitOut(committed=False, rejectedReason="Governance gate: requires ayase_approve=true AND amy_approve=true")
     if not RE_COMMIT_PREFIX.match(inp.message.strip()):
@@ -236,4 +238,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
