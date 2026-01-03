@@ -10,6 +10,19 @@ from typing import Literal, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+
+from fastapi import Header
+
+NOTEOPS_TOKEN = os.getenv("NOTEOPS_TOKEN", "").strip()
+
+def _require_token(x_noteops_token: str | None):
+    """
+    If NOTEOPS_TOKEN is set, require matching X-NoteOps-Token header.
+    If NOTEOPS_TOKEN is empty, allow (local-dev mode).
+    """
+    if NOTEOPS_TOKEN:
+        if not x_noteops_token or x_noteops_token.strip() != NOTEOPS_TOKEN:
+            raise HTTPException(status_code=401, detail="Unauthorized: missing or invalid X-NoteOps-Token")
 APP_TITLE = "NoteOps API (Yoshio-Optimized NoteGenerator)"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8711
@@ -142,7 +155,7 @@ class NoteWriteOut(BaseModel):
     sha256After: str
 
 @app.post("/note/write", response_model=NoteWriteOut)
-def note_write(inp: NoteWriteIn):
+def note_write(inp: NoteWriteIn, x_noteops_token: str | None = Header(default=None)):
     rel = _ensure_allowed_path(f"NoteMD/{inp.layer}/{_norm_rel(inp.path)}")
     abs_p = _to_abs(rel)
     sha_before = _sha256_file(abs_p) if abs_p.exists() else None
@@ -157,7 +170,7 @@ class LogAppendIn(BaseModel):
     mode: Optional[Mode] = "append"
 
 @app.post("/log/append")
-def log_append(inp: LogAppendIn):
+def log_append(inp: LogAppendIn, x_noteops_token: str | None = Header(default=None)):
     rel = _ensure_allowed_path(f"logs/{inp.kind}/{_norm_rel(inp.path)}")
     abs_p = _to_abs(rel)
     _write_text_utf8_lf(abs_p, inp.content, inp.mode or "append")
@@ -167,7 +180,7 @@ class NormalizeIn(BaseModel):
     root: Optional[str] = "."
 
 @app.post("/normalize/run")
-def normalize_run(inp: NormalizeIn):
+def normalize_run(inp: NormalizeIn, x_noteops_token: str | None = Header(default=None)):
     script = REPO_TOP / "tools" / "normalize-utf8lf.ps1"
     if script.exists():
         root = inp.root or "."
@@ -196,7 +209,7 @@ def _stage_allowlisted():
             pass
 
 @app.post("/git/commit", response_model=GitCommitOut)
-def git_commit(inp: GitCommitIn):
+def git_commit(inp: GitCommitIn, x_noteops_token: str | None = Header(default=None)):
     if not (inp.ayase_approve and inp.amy_approve):
         return GitCommitOut(committed=False, rejectedReason="Governance gate: requires ayase_approve=true AND amy_approve=true")
     if not RE_COMMIT_PREFIX.match(inp.message.strip()):
