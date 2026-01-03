@@ -8,3 +8,4 @@ __pycache__/
 ai_dev_core/
 .venv_noteops/
 .venv/
+tools/bin/
