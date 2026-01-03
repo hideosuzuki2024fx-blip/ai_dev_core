@@ -1,0 +1,153 @@
+openapi: 3.0.2
+info:
+  title: ReWriteMe API
+  version: 1.0.0
+  description: |
+    This specification documents the HTTP API exposed by the ReWriteMe backend.
+    It covers endpoints for generating rewrite suggestions, performing sentiment
+    analysis and persisting history records.
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+paths:
+  /rewrite:
+    post:
+      summary: Generate rewrite suggestions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RewriteRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RewriteResponse'
+  /emotion:
+    post:
+      summary: Analyse emotional tone of a single text
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmotionRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmotionResponse'
+  /history:
+    post:
+      summary: Finalise a history entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveHistoryRequest'
+      responses:
+        '200':
+          description: History updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+  /history/{history_id}:
+    get:
+      summary: Retrieve a history entry
+      parameters:
+        - name: history_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: History detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryDetail'
+components:
+  schemas:
+    RewriteRequest:
+      type: object
+      properties:
+        text:
+          type: string
+      required:
+        - text
+    RewriteOption:
+      type: object
+      properties:
+        text:
+          type: string
+        reason:
+          type: string
+        emotion:
+          type: string
+    RewriteResponse:
+      type: object
+      properties:
+        original:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/RewriteOption'
+        history_id:
+          type: integer
+    EmotionRequest:
+      type: object
+      properties:
+        text:
+          type: string
+      required:
+        - text
+    EmotionResponse:
+      type: object
+      properties:
+        emotion:
+          type: string
+    SaveHistoryRequest:
+      type: object
+      properties:
+        history_id:
+          type: integer
+        selected_option:
+          type: integer
+      required:
+        - history_id
+        - selected_option
+    HistoryResponse:
+      type: object
+      properties:
+        message:
+          type: string
+    HistoryDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        original:
+          type: string
+        rewrites:
+          type: array
+          items:
+            type: string
+        sentiments:
+          type: array
+          items:
+            type: string
+        selected_option:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time

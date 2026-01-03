@@ -1,0 +1,24 @@
+{
+  "qa_tests": [
+    {
+      "name": "check_rewrite_endpoint_returns_3_options",
+      "status": "pending",
+      "description": "POST /rewrite returns exactly three rewrite options"
+    },
+    {
+      "name": "check_emotion_api_returns_json",
+      "status": "pending",
+      "description": "POST /emotion returns a valid JSON object with an emotion label"
+    },
+    {
+      "name": "check_history_persistence",
+      "status": "pending",
+      "description": "POST /history saves selected option and GET /history/{id} returns saved data"
+    },
+    {
+      "name": "verify_ui_loads_without_error",
+      "status": "pending",
+      "description": "Running the frontend dev server loads the main UI without errors"
+    }
+  ]
+}
