@@ -13,20 +13,16 @@ from pydantic import BaseModel, Field
 
 from fastapi import Header
 
-NOTEOPS_TOKEN = os.getenv("NOTEOPS_TOKEN", "").strip()
-
 def _require_token(x_noteops_token: str | None):
     """
     If NOTEOPS_TOKEN is set, require matching X-NoteOps-Token header.
     If NOTEOPS_TOKEN is empty, allow (local-dev mode).
+    NOTE: token is read per-request (no import-time caching).
     """
-    if NOTEOPS_TOKEN:
-        if not x_noteops_token or x_noteops_token.strip() != NOTEOPS_TOKEN:
+    token = os.getenv("NOTEOPS_TOKEN", "").strip()
+    if token:
+        if not x_noteops_token or x_noteops_token.strip() != token:
             raise HTTPException(status_code=401, detail="Unauthorized: missing or invalid X-NoteOps-Token")
-APP_TITLE = "NoteOps API (Yoshio-Optimized NoteGenerator)"
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8711
-RE_COMMIT_PREFIX = re.compile(r"^(Draft|Review|Final):\s.+")
 
 Layer = Literal["0_raw", "1_mash", "2_ferment", "3_article"]
 Mode = Literal["overwrite", "append"]
@@ -136,8 +132,7 @@ def repo_status():
 @app.get("/debug/repo")
 def debug_repo():
     # helps diagnose REPO_TOP mismatch quickly
-    return {
-        "repoTop": str(REPO_TOP),
+    return {"tokenEnabled": bool(os.getenv("NOTEOPS_TOKEN","").strip()), "repoTop": str(REPO_TOP),
         "cwd": os.getcwd(),
         "appFile": str(Path(__file__).resolve()),
         "gitTopCheck": _run(["git","rev-parse","--show-toplevel"], cwd=REPO_TOP).stdout.strip()
@@ -174,7 +169,7 @@ def log_append(inp: LogAppendIn, x_noteops_token: str | None = Header(default=No
     rel = _ensure_allowed_path(f"logs/{inp.kind}/{_norm_rel(inp.path)}")
     abs_p = _to_abs(rel)
     _write_text_utf8_lf(abs_p, inp.content, inp.mode or "append")
-    return {"ok": True, "writtenPath": rel}
+    return {"tokenEnabled": bool(os.getenv("NOTEOPS_TOKEN","").strip()), "ok": True, "writtenPath": rel}
 
 class NormalizeIn(BaseModel):
     root: Optional[str] = "."
@@ -187,8 +182,8 @@ def normalize_run(inp: NormalizeIn, x_noteops_token: str | None = Header(default
         r = _run(["powershell","-ExecutionPolicy","Bypass","-File",str(script),"-Root",root], cwd=REPO_TOP)
         if r.returncode != 0:
             raise HTTPException(status_code=500, detail=(r.stderr or r.stdout or "normalize failed").strip())
-        return {"ok": True, "method": "powershell", "output": (r.stdout or "").strip()}
-    return {"ok": True, "method": "noop", "output": "tools/normalize-utf8lf.ps1 not found"}
+        return {"tokenEnabled": bool(os.getenv("NOTEOPS_TOKEN","").strip()), "ok": True, "method": "powershell", "output": (r.stdout or "").strip()}
+    return {"tokenEnabled": bool(os.getenv("NOTEOPS_TOKEN","").strip()), "ok": True, "method": "noop", "output": "tools/normalize-utf8lf.ps1 not found"}
 
 class GitCommitIn(BaseModel):
     message: str
@@ -241,3 +236,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

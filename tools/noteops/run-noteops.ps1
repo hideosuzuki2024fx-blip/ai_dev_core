@@ -1,5 +1,11 @@
+param([string]$Token = "")
+
 Set-Location (git rev-parse --show-toplevel)
 
+# Set token for this process (optional)
+if ($Token -and $Token.Trim().Length -gt 0) {
+  $env:NOTEOPS_TOKEN = $Token
+}
 python -m venv .venv_noteops | Out-Null
 . .\.venv_noteops\Scripts\Activate.ps1
 
