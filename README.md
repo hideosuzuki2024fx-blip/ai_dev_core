@@ -96,3 +96,12 @@ GPT は GitHub 上のファイル内容を取得する際、**GitHub Connectors 
   - ユーザーがアップロードしたファイル
   のみに限定すること。
 
+
+---
+
+## 10. エンコーディングと改行の統一
+- 原則：UTF-8（BOMなし） + LF
+- .gitattributes でリポジトリのEOLをLFに統一する
+- .editorconfig でエディタ/生成物のEOLをLFへ誘導する
+- 正規化：	ools/normalize-utf8lf.ps1
+
