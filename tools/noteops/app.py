@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -18,7 +19,23 @@ Layer = Literal["0_raw", "1_mash", "2_ferment", "3_article"]
 Mode = Literal["overwrite", "append"]
 LogKind = Literal["critique", "error", "meta"]
 
-REPO_TOP = Path(__file__).resolve().parents[3]
+def _run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
+
+def _discover_repo_top() -> Path:
+    """
+    Determine git repo top reliably.
+    - Prefer: git rev-parse --show-toplevel executed from this file's directory.
+    - Fallback: parents[3] (legacy) if git is unavailable.
+    """
+    here = Path(__file__).resolve().parent
+    r = _run(["git", "rev-parse", "--show-toplevel"], cwd=here)
+    if r.returncode == 0 and (r.stdout or "").strip():
+        return Path(r.stdout.strip()).resolve()
+    # fallback (may be wrong if folder depth changes)
+    return Path(__file__).resolve().parents[3]
+
+REPO_TOP = _discover_repo_top()
 
 ALLOWED_PREFIXES = [
     "NoteMD/0_raw/",
@@ -68,9 +85,10 @@ def _write_text_utf8_lf(p: Path, content: str, mode: Mode) -> None:
     p.write_text(content, encoding="utf-8", newline="\n")
 
 def _run_git(args: list[str]) -> str:
-    r = subprocess.run(["git", *args], cwd=str(REPO_TOP), capture_output=True, text=True)
+    r = _run(["git", *args], cwd=REPO_TOP)
     if r.returncode != 0:
-        raise RuntimeError((r.stderr or r.stdout or "").strip() or "git failed")
+        msg = (r.stderr or r.stdout or "").strip() or "git failed"
+        raise RuntimeError(msg)
     return (r.stdout or "").strip()
 
 def _ensure_allowed_path(rel: str) -> str:
@@ -84,7 +102,7 @@ def _ensure_allowed_path(rel: str) -> str:
         raise HTTPException(status_code=403, detail="resolved path escapes repo")
     return rel_n
 
-app = FastAPI(title=APP_TITLE, version="0.1.0")
+app = FastAPI(title=APP_TITLE, version="0.2.0")
 
 class RepoStatus(BaseModel):
     topLevel: str
@@ -94,10 +112,23 @@ class RepoStatus(BaseModel):
 
 @app.get("/repo/status", response_model=RepoStatus)
 def repo_status():
-    top = _run_git(["rev-parse", "--show-toplevel"])
-    branch = _run_git(["branch", "--show-current"])
-    porcelain = _run_git(["status", "--porcelain"])
-    return RepoStatus(topLevel=top, branch=branch, isClean=(porcelain.strip() == ""), porcelain=porcelain)
+    try:
+        top = _run_git(["rev-parse", "--show-toplevel"])
+        branch = _run_git(["branch", "--show-current"])
+        porcelain = _run_git(["status", "--porcelain"])
+        return RepoStatus(topLevel=top, branch=branch, isClean=(porcelain.strip() == ""), porcelain=porcelain)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"/repo/status failed: {e}")
+
+@app.get("/debug/repo")
+def debug_repo():
+    # helps diagnose REPO_TOP mismatch quickly
+    return {
+        "repoTop": str(REPO_TOP),
+        "cwd": os.getcwd(),
+        "appFile": str(Path(__file__).resolve()),
+        "gitTopCheck": _run(["git","rev-parse","--show-toplevel"], cwd=REPO_TOP).stdout.strip()
+    }
 
 class NoteWriteIn(BaseModel):
     layer: Layer
@@ -140,8 +171,7 @@ def normalize_run(inp: NormalizeIn):
     script = REPO_TOP / "tools" / "normalize-utf8lf.ps1"
     if script.exists():
         root = inp.root or "."
-        cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(script), "-Root", root]
-        r = subprocess.run(cmd, cwd=str(REPO_TOP), capture_output=True, text=True)
+        r = _run(["powershell","-ExecutionPolicy","Bypass","-File",str(script),"-Root",root], cwd=REPO_TOP)
         if r.returncode != 0:
             raise HTTPException(status_code=500, detail=(r.stderr or r.stdout or "normalize failed").strip())
         return {"ok": True, "method": "powershell", "output": (r.stdout or "").strip()}
@@ -161,7 +191,7 @@ class GitCommitOut(BaseModel):
 def _stage_allowlisted():
     for t in ["NoteMD","logs","persona","tools","actions",".gitattributes","README.md","README_NEW.md"]:
         try:
-            _run_git(["add", "--", t])
+            _run_git(["add","--",t])
         except Exception:
             pass
 
@@ -183,11 +213,11 @@ def git_commit(inp: GitCommitIn):
 
     try:
         _stage_allowlisted()
-        porcelain = _run_git(["status", "--porcelain"])
+        porcelain = _run_git(["status","--porcelain"])
         if porcelain.strip() == "":
             return GitCommitOut(committed=False, rejectedReason="No changes to commit")
-        _run_git(["commit", "-m", inp.message])
-        sha = _run_git(["rev-parse", "HEAD"])
+        _run_git(["commit","-m",inp.message])
+        sha = _run_git(["rev-parse","HEAD"])
         return GitCommitOut(committed=True, commitSha=sha)
     except Exception as e:
         return GitCommitOut(committed=False, rejectedReason=str(e))
