@@ -105,3 +105,22 @@ GPT は GitHub 上のファイル内容を取得する際、**GitHub Connectors 
 - .editorconfig でエディタ/生成物のEOLをLFへ誘導する
 - 正規化：	ools/normalize-utf8lf.ps1
 
+
+---
+
+## 11. Actions接続（localhost問題）
+GPTs Actions の実行環境はローカルPCではないため、通常 http://127.0.0.1:8711 へ到達できない。
+Actions から NoteOps を利用するには、以下のいずれかが必要。
+
+### 11.1 開発（最短）：トンネル
+- ngrok / Cloudflare Tunnel 等で NoteOps を外部到達可能にする
+- 必須：NOTEOPS_TOKEN を設定し、Actions から X-NoteOps-Token を送る
+
+### 11.2 運用（推奨）：LAN内/VM配置
+- NoteOps をLAN内サーバまたはVMに配置し、固定URLで公開
+- 推奨：TLS（https） + トークン管理（秘密情報はコミットしない）
+
+### 11.3 Actions側の設定
+- ctions/openapi.yaml を GPTs Actions に取り込み
+- すべての書き込み系リクエストに X-NoteOps-Token を付与（値は機密として扱う）
+
