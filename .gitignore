@@ -6,3 +6,5 @@ project_tree.txt
 *.pyc
 __pycache__/
 ai_dev_core/
+.venv_noteops/
+.venv/
