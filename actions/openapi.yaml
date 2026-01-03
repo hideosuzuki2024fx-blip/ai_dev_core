@@ -3,7 +3,7 @@ info:
   title: NoteOps API (Yoshio-Optimized NoteGenerator)
   version: 0.2.0
 servers:
-  - url: http://127.0.0.1:8711
+  - url: https://correspondence-assignment-approaches-roles.trycloudflare.com
 
 components:
   securitySchemes:
