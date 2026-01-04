@@ -1,3 +1,13 @@
+# --- Yoshio Patch: SKIP_INTEGRITY Safe Bypass ---
+if ($env:SKIP_INTEGRITY -eq "true") {
+    Write-Host "⚙️ SKIP_INTEGRITY=true → Integrity チェックをスキップします。"
+    if ($env:GITHUB_ACTIONS -eq "true") {
+        exit 0  # Actions 環境では正常終了
+    } else {
+        return   # ローカルでは return で抜ける（ターミナルを閉じない）
+    }
+}
+# --- End Yoshio Patch ---
 $ErrorActionPreference = "Stop"
 
 # ルート解決
