@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "NoteMD/3_article/**/*", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "/NoteMD/3_article/$1" }
+  ]
+}

@@ -134,7 +134,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="動画の冒頭・終端を解析して、つながりが滑らかになる順に並び替えて連結します。"
     )
-    parser.add_argument("inputs", nargs="*", help="入力動画ファイル（省略時は --input-dir と --pattern を使用）。")
+    parser.add_argument("inputs", nargs="*", help="入力動画ファイル（# CODE_TRUNCATED時は --input-dir と --pattern を使用）。")
     parser.add_argument("--input-dir", default=".", help="動画を探索するディレクトリ（デフォルト: カレントディレクトリ）。")
     parser.add_argument("--pattern", default="*.mp4", help="入力動画の簡易パターン（拡張子にマッチ、例: *.mp4）。")
     parser.add_argument("--recursive", action="store_true", help="input-dir 以下を再帰的に探索します。")

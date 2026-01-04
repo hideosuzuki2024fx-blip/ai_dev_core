@@ -77,10 +77,10 @@ GPT は毎回次を要求する：
 GPT の全出力は次形式で統一：
 ```
 ✅ 結論
-…要点のみ…
+# CODE_TRUNCATED要点のみ# CODE_TRUNCATED
 
 📌 次のアクション（1行）
-…PowerShell or コマンド…
+# CODE_TRUNCATEDPowerShell or コマンド# CODE_TRUNCATED
 ```
 
 ---

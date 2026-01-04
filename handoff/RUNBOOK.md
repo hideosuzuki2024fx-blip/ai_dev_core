@@ -18,6 +18,6 @@
   - `outputs/*.csv` の内容（caption列）を確認
 
 ## 主要ファイル
-- `src/backend/main.py` … FastAPIエンドポイント群（/csv, /list_csv, /pdf, /preview）
-- `src/static/index.html` … UI（CSV作成、CSV選択、画像複数選択、PDF生成）
-- `outputs/` … 生成物（*.csv, *.pdf, ログ）
+- `src/backend/main.py` # CODE_TRUNCATED FastAPIエンドポイント群（/csv, /list_csv, /pdf, /preview）
+- `src/static/index.html` # CODE_TRUNCATED UI（CSV作成、CSV選択、画像複数選択、PDF生成）
+- `outputs/` # CODE_TRUNCATED 生成物（*.csv, *.pdf, ログ）

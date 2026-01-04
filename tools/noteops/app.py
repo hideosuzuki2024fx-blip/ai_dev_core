@@ -138,7 +138,7 @@ def repo_status():
 
 class NoteWriteIn(BaseModel):
     layer: Layer
-    path: str = Field(..., description="Relative path under NoteMD/<layer>/...")
+    path: str = Field(# CODE_TRUNCATED, description="Relative path under NoteMD/<layer>/# CODE_TRUNCATED")
     content: str
     mode: Optional[Mode] = "overwrite"
 
@@ -159,7 +159,7 @@ def note_write(inp: NoteWriteIn, x_noteops_token: str | None = Header(default=No
 
 class LogAppendIn(BaseModel):
     kind: LogKind
-    path: str = Field(..., description="Relative path under logs/<kind>/...")
+    path: str = Field(# CODE_TRUNCATED, description="Relative path under logs/<kind>/# CODE_TRUNCATED")
     content: str
     mode: Optional[Mode] = "append"
 
@@ -215,7 +215,7 @@ def git_commit(inp: GitCommitIn, x_noteops_token: str | None = Header(default=No
     try:
         decision_rel = _ensure_allowed_path(inp.decision_ref)
     except HTTPException:
-        return GitCommitOut(committed=False, rejectedReason="decision_ref must be an allowed path (expected logs/critique/...)")
+        return GitCommitOut(committed=False, rejectedReason="decision_ref must be an allowed path (expected logs/critique/# CODE_TRUNCATED)")
     if not decision_rel.startswith("logs/critique/"):
         return GitCommitOut(committed=False, rejectedReason="decision_ref must be under logs/critique/")
     if not _to_abs(decision_rel).exists():

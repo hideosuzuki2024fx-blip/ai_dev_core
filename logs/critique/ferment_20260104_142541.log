@@ -1,0 +1,8 @@
+2026-01-04 14:25:41 [OK] 発酵ループ開始
+2026-01-04 14:25:41 [OK] 整形: README.md → 1_mash
+2026-01-04 14:25:41 [OK] 発酵準備: README_mash.md → 2_ferment
+2026-01-04 14:25:41 [OK] 発酵準備: README.md → 2_ferment
+2026-01-04 14:25:41 [OK] Final化: README_ferment.md → 3_article
+2026-01-04 14:25:41 [OK] Final化: README_mash_ferment.md → 3_article
+2026-01-04 14:25:41 [OK] Final化: README.md → 3_article
+2026-01-04 14:25:43 [OK] Git push 完了

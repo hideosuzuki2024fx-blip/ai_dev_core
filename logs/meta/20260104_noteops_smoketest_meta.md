@@ -5,8 +5,8 @@
 - Endpoints exercised:
   - GET /debug/repo  => OK (repoTop resolved to E:\ai_dev_core)
   - GET /repo/status => OK (after repoTop detection fix)
-  - POST /note/write => OK (wrote to NoteMD/0_raw/...)
-  - POST /log/append => OK (wrote to logs/meta/...)
+  - POST /note/write => OK (wrote to NoteMD/0_raw/# CODE_TRUNCATED)
+  - POST /log/append => OK (wrote to logs/meta/# CODE_TRUNCATED)
 
 - Notes:
   - Initial /repo/status returned 500 before repoTop detection fix.

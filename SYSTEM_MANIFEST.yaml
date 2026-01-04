@@ -1,0 +1,93 @@
+system_manifest:
+  version: 1.0.0
+  project_name: Yoshio-Optimized NoteGenerator
+  description: >
+    発酵型ノートを自動生成し、構成(Amy)・論理(Ayase)・永続化(Ponta)
+    の三者合議によってDraft→Review→Finalを管理するシステム。
+  directory_structure:
+    NoteMD:
+      - 0_raw
+      - 1_mash
+      - 2_ferment
+      - 3_article
+    logs:
+      - critique
+      - error
+    meta:
+      - persona
+  governance:
+    triad:
+      Amy: "構成・段組・見出し設計"
+      Ayase: "論理・整合性・批評統合"
+      Ponta: "永続化・Git commit・再現性確保"
+    principle:
+      - 再現性
+      - エラー透明性
+      - 批評内在化
+      - 発酵型生成
+      - 双方向ガバナンス
+  process:
+  stages: [Draft, Review, Final]
+  note_pipeline: "0_raw → 1_mash → 2_ferment → 3_article"
+  scripts:
+    ferment_pipeline: "scripts/FermentPipeline.ps1"
+
+logging:
+  critique: "logs/critique/"
+  error: "logs/error/"
+  policy: >
+    各発酵サイクルごとに自動生成。成功はcritiqueログ、例外はerrorログに記録。
+    ファイル名は ferment_YYYYMMDD_HHMMSS.log。
+  critique: "logs/critique/"
+  error: "logs/error/"
+  policy: >
+    各発酵サイクルごとに自動生成。成功はcritiqueログ、例外はerrorログに記録。
+    ファイル名は ferment_YYYYMMDD_HHMMSS.log。
+
+history:
+  last_ferment_log: "E:\ai_dev_core\logs\critique\ferment_20260104_143138.yaml"
+  last_stage: "Final"
+  last_updated: "2026-01-04 14:31:38"
+
+# ==============================================
+# 🔍 GPT Structural Map (for contextual reading)
+# ==============================================
+sources:
+  - kind: code
+    description: Python application logic
+    path: apps/**/*.py
+  - kind: script
+    description: PowerShell / automation scripts
+    path: scripts/**/*.ps1
+  - kind: document
+    description: Documentation, manifests, and human-readable content
+    path: NoteMD/**/*.md
+  - kind: manifest
+    description: System and process configuration
+    path: SYSTEM_MANIFEST.yaml
+  - kind: ops
+    description: Operational logic (CI/CD, validation)
+    path: ops/**/*.ps1
+analysis:
+  context:
+    mode: gpt
+    rules:
+      - if: kind == 'code'
+        parse: ast
+      - if: kind == 'document'
+        parse: markdown
+      - if: kind == 'manifest'
+        parse: yaml
+      - if: kind == 'script'
+        parse: powershell
+      - if: kind == 'ops'
+        parse: powershell
+  validation:
+    ignore_keywords:
+      - 省略
+      - 略称
+      - 中略
+    detect_keywords:
+      - TODO
+      - FIXME
+      - 実装予定

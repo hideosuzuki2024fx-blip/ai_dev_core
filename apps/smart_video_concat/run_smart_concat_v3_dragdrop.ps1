@@ -89,7 +89,7 @@ $argsList += @(
     "--height", $height
 )
 
-Write-Host "Running smart_video_concat v3 (drag & drop mode)..." -ForegroundColor Cyan
+Write-Host "Running smart_video_concat v3 (drag & drop mode)# CODE_TRUNCATED" -ForegroundColor Cyan
 Write-Host $python ($argsList -join ' ')
 
 # ★ Start-Process をやめて、& python @argsList でそのまま渡す

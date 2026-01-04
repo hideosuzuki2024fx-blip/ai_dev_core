@@ -83,7 +83,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         right = ttk.Frame(frame_top)
         right.pack(side="left", fill="y", padx=(4, 8), pady=8)
 
-        ttk.Button(right, text="追加...", command=self.on_add_files).pack(fill="x", pady=2)
+        ttk.Button(right, text="追加# CODE_TRUNCATED", command=self.on_add_files).pack(fill="x", pady=2)
         ttk.Button(right, text="選択削除", command=self.on_remove_selected).pack(fill="x", pady=2)
         ttk.Button(right, text="全クリア", command=self.on_clear_files).pack(fill="x", pady=2)
         ttk.Button(right, text="上へ (表示順)", command=self.on_move_up).pack(fill="x", pady=2)
@@ -147,7 +147,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         ttk.Entry(frame_out, textvariable=self.output_path_var).pack(
             side="left", fill="x", expand=True, padx=6
         )
-        ttk.Button(frame_out, text="参照...", command=self.on_browse_output).pack(side="left")
+        ttk.Button(frame_out, text="参照# CODE_TRUNCATED", command=self.on_browse_output).pack(side="left")
 
         frame_bottom = ttk.Frame(self)
         frame_bottom.pack(fill="both", expand=False, padx=10, pady=(4, 10))
@@ -276,7 +276,7 @@ class SmartVideoConcatV3GUI(tk.Tk):
         if not self.files:
             messagebox.showwarning("警告", "自動並び替えの対象となるファイルがありません。")
             return
-        self._log("特徴抽出と順序推定を開始します (v3)...")
+        self._log("特徴抽出と順序推定を開始します (v3)# CODE_TRUNCATED")
         feats: list[dict] = []
         for p in self.files:
             self._log(f"特徴抽出: {p}")

@@ -78,7 +78,7 @@ def main(argv=None):
     outdir=Path(a.outdir); outdir.mkdir(parents=True,exist_ok=True)
     if a.demo:
         v,m=generate_demo_sources(outdir/"_demo"); inputv=v; music=m
-        print("Running in DEMO mode...")
+        print("Running in DEMO mode# CODE_TRUNCATED")
     else:
         inputv=Path(a.input); music=a.music
     f,s,u=build_short_video(inputv,outdir,music,a.length,a.fps)
