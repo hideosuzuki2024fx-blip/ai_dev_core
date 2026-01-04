@@ -27,22 +27,6 @@ system_manifest:
       - 発酵型生成
       - 双方向ガバナンス
   process:
-    stages: [Draft, Review, Final]
-    note_pipeline: "0_raw → 1_mash → 2_ferment → 3_article"
-  git_policy:
-    base_dir: "E:\\ai_dev_core"
-    encoding: "UTF-8 (no BOM, LF)"
-    attributes_file: ".gitattributes"
-    commit_message_format: "[{stage}] {summary}"
-    normalization_scripts:
-      - "scripts/convert_personas_to_utf8.ps1"
-      - "scripts/convert_personas_to_utf8.sh"
-  recovery:
-    instruction: >
-      チャットがリセットされた場合は、このSYSTEM_MANIFEST.yamlを
-      冒頭に貼ることで状態を完全復元できます。
-
-process:
   stages: [Draft, Review, Final]
   note_pipeline: "0_raw → 1_mash → 2_ferment → 3_article"
   scripts:
@@ -54,3 +38,9 @@ logging:
   policy: >
     各発酵サイクルごとに自動生成。成功はcritiqueログ、例外はerrorログに記録。
     ファイル名は ferment_YYYYMMDD_HHMMSS.log。
+  critique: "logs/critique/"
+  error: "logs/error/"
+  policy: >
+    各発酵サイクルごとに自動生成。成功はcritiqueログ、例外はerrorログに記録。
+    ファイル名は ferment_YYYYMMDD_HHMMSS.log。
+
