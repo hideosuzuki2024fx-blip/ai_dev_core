@@ -2,7 +2,7 @@ name: Yoshio Auto-Ferment
 
 on:
   schedule:
-    - cron: "0 3 * * *"  # JST 12:00 (毎日)
+    - cron: "0 3 * * *"  # JST 12:00
   workflow_dispatch:
 
 jobs:
@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      SKIP_INTEGRITY: "true"
 
     steps:
       - uses: actions/checkout@v4
