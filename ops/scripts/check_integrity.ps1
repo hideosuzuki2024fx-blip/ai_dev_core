@@ -1,3 +1,8 @@
+# --- Exclusion List for Self-Referential Docs ---
+$ignorePaths = @(
+    "actions/NOTEOPS_SPEC.md",   # Contains pattern docs; skip
+    "docs/protocol/codegen_rules.md"
+)
 # --- Yoshio Patch: SKIP_INTEGRITY Safe Bypass ---
 if ($env:SKIP_INTEGRITY -eq "true") {
     Write-Host "⚙️ SKIP_INTEGRITY=true → Integrity チェックをスキップします。"
