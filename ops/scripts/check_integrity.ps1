@@ -24,8 +24,8 @@ $ExcludePathRegex = @(
   'README\.md$'                        # READMEの方針文も除外（必要に応じて外せる）
 ) -join '|'
 
-# 検出パターン（分断・# CODE_TRUNCATEDを疑う語）
-$Patterns = @('# CODE_TRUNCATED','# CODE_TRUNCATED','# CODE_TRUNCATED(?!称)','\.\.\.','# CODE_TRUNCATED')
+# 検出パターン（分断・(省略|中略|略(?!称)|…|\.{3})を疑う語）
+$Patterns = @('(省略|中略|略(?!称)|…|\.{3})','(省略|中略|略(?!称)|…|\.{3})','(省略|中略|略(?!称)|…|\.{3})(?!称)','\.\.\.','(省略|中略|略(?!称)|…|\.{3})')
 
 # コードフェンス/インラインコードを除去して本文のみ検査
 function Strip-Code($s) {
@@ -53,7 +53,7 @@ foreach ($F in $Targets) {
 }
 
 if ($Violations.Count -gt 0) {
-  Write-Host "`n❌ 分断・# CODE_TRUNCATEDコード検出:" -ForegroundColor Red
+  Write-Host "`n❌ 分断・(省略|中略|略(?!称)|…|\.{3})コード検出:" -ForegroundColor Red
   $Violations | ForEach-Object { Write-Host " - $_" }
   exit 1
 } else {
