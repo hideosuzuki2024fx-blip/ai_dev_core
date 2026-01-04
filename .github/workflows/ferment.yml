@@ -1,0 +1,30 @@
+name: Yoshio Auto-Ferment
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # JST 12:00 (毎日)
+  workflow_dispatch:
+
+jobs:
+  ferment:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-powershell@v2
+
+      - name: Run Ferment Pipeline
+        run: pwsh ./scripts/FermentPipeline.ps1
+
+      - name: Update Manifest
+        run: pwsh ./scripts/update_manifest_with_logging.ps1
+
+      - name: Commit & Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ci: auto-ferment $(date +'%Y%m%d_%H%M%S')" || echo "No changes"
+          git push
