@@ -7,13 +7,13 @@ Returns:
 {
 "video1.mp4": {
 color: ndarray(128,),
-motion: {...},
+motion: {# CODE_TRUNCATED},
 embedding: ndarray(512,),
-audio: {...},
+audio: {# CODE_TRUNCATED},
 first_frame: ndarray,
 last_frame: ndarray
 },
-...
+# CODE_TRUNCATED
 }
 
 shell

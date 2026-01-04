@@ -29,7 +29,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 app.mount("/files",  StaticFiles(directory=str(OUTPUTS)), name="files")
 
 @app.post("/csv")
-async def create_csv(title: str = Form(...), captions: str = Form("")):
+async def create_csv(title: str = Form(# CODE_TRUNCATED), captions: str = Form("")):
     filename = f"{title.replace(' ', '_')}.csv"
     csv_path = OUTPUTS / filename
     rows = []
@@ -50,8 +50,8 @@ async def list_csv():
 
 @app.post("/pdf")
 async def create_pdf(
-    title: str = Form(...),
-    csv_name: str = Form(...),
+    title: str = Form(# CODE_TRUNCATED),
+    csv_name: str = Form(# CODE_TRUNCATED),
     files: list[UploadFile] = None
 ):
     csv_path = OUTPUTS / csv_name
@@ -92,7 +92,7 @@ async def create_pdf(
     """)
     for idx, p in enumerate(img_paths):
         cap = captions[idx] if idx < len(captions) else ""
-        img_uri = Path(p).as_uri()  # file:///C:/... に変換
+        img_uri = Path(p).as_uri()  # file:///C:/# CODE_TRUNCATED に変換
         html_parts.append(f"""
         <section style='page-break-after: always;'>
           <div style='text-align:center;'>
@@ -189,7 +189,7 @@ window.addEventListener('DOMContentLoaded', loadCsvList);
 document.getElementById('csvForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('csvMsg');
-  msg.textContent = "⏳ 生成中...";
+  msg.textContent = "⏳ 生成中# CODE_TRUNCATED";
   const fd = new FormData(e.target);
   const r = await fetch('/csv', { method: 'POST', body: fd });
   const j = await r.json();
@@ -204,7 +204,7 @@ document.getElementById('csvForm').addEventListener('submit', async (e) => {
 document.getElementById('pdfForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('pdfMsg');
-  msg.textContent = "⏳ 生成中...";
+  msg.textContent = "⏳ 生成中# CODE_TRUNCATED";
   const fd = new FormData(e.target);
   const r = await fetch('/pdf', { method: 'POST', body: fd, redirect: 'follow' });
   if (r.redirected) {

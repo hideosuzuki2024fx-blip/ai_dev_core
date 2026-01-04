@@ -40,7 +40,7 @@ if ($DryRun.IsPresent) {
     $argsList += "--dry-run"
 }
 
-Write-Host "Running smart_video_concat v3 (dir/pattern mode)..." -ForegroundColor Cyan
+Write-Host "Running smart_video_concat v3 (dir/pattern mode)# CODE_TRUNCATED" -ForegroundColor Cyan
 Write-Host $python $($argsList -join " ")
 
 $proc = Start-Process -FilePath $python -ArgumentList $argsList -NoNewWindow -PassThru -Wait

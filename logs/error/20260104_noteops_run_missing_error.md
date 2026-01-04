@@ -6,11 +6,11 @@
 - Severity: Medium
 
 ## 1. 症状（Symptom）
-- Could not find a part of the path 'C:\WINDOWS\System32\logs\error\...'
+- Could not find a part of the path 'C:\WINDOWS\System32\logs\error\# CODE_TRUNCATED'
 
 ## 2. 再現手順（Repro Steps）
 1. PowerShell current dir is not repo top
-2. Write-Utf8NoBomLf -Path logs/error/... (relative)
+2. Write-Utf8NoBomLf -Path logs/error/# CODE_TRUNCATED (relative)
 3. Path resolves under System32 and fails
 
 ## 3. 原因仮説（Root Cause Hypothesis）

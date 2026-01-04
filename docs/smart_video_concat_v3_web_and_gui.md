@@ -66,7 +66,7 @@ PowerShell から次のように実行します。
 
 起動に成功すると、コンソールに次のようなメッセージが表示されます。
 
-    Starting smart_video_concat v3 server on http://127.0.0.1:5005 ...
+    Starting smart_video_concat v3 server on http://127.0.0.1:5005 # CODE_TRUNCATED
     Ctrl+C でサーバを停止できます。
      * Serving Flask app 'server_v3'
      * Running on http://127.0.0.1:5005
@@ -109,8 +109,8 @@ PowerShell から次のように実行します。
     {
       "error": "ffmpeg の実行に失敗しました。",
       "returncode": 1,
-      "stdout": "...",
-      "stderr": "..."
+      "stdout": "# CODE_TRUNCATED",
+      "stderr": "# CODE_TRUNCATED"
     }
 
 ### 2.3 curl での手動確認例
@@ -190,14 +190,14 @@ Windows 標準の CPython であれば、tkinter は同梱されている前提�
 ### 4.3 画面構成
 
 - 入力ファイル一覧  
-  「追加...」ボタンで mp4 を複数選択。  
+  「追加# CODE_TRUNCATED」ボタンで mp4 を複数選択。  
   「選択削除」「全クリア」で削除。  
   「上へ」「下へ」で順序入れ替え。  
   上から順に連結されます。
 - エンコード設定  
   CRF（既定値: 20）、preset（既定値: veryfast）、幅 (width) / 高さ (height)（既定値: 1920 / 1080）。
 - 出力ファイル  
-  テキストボックスと「参照...」ボタン。  
+  テキストボックスと「参照# CODE_TRUNCATED」ボタン。  
   未指定の場合、最初に選んだファイルと同じフォルダに smart_concat_v3_gui.mp4 を提案します。
 - ログエリア  
   実行した ffmpeg コマンドと stdout / stderr を表示します。
@@ -210,7 +210,7 @@ Windows 標準の CPython であれば、tkinter は同梱されている前提�
 2. 一時ディレクトリに concat_list_v3.txt を生成。
 3. ffmpeg を 1 回実行して出力ファイルを生成。
 
-概略のコマンドは次のような形になります（実際はパスなどが展開されます）。
+概# CODE_TRUNCATEDのコマンドは次のような形になります（実際はパスなどが展開されます）。
 
     ffmpeg -y -f concat -safe 0 -i <concat_list_v3.txt> ^
       -vf "scale=WIDTH:HEIGHT:force_original_aspect_ratio=decrease,pad=WIDTH:HEIGHT:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p" ^

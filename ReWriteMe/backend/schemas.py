@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 
 class RewriteRequest(BaseModel):
-    text: str = Field(..., description="Original text provided by the user")
+    text: str = Field(# CODE_TRUNCATED, description="Original text provided by the user")
 
 
 class RewriteOption(BaseModel):

@@ -86,13 +86,13 @@ https://github.com/hideosuzuki2024fx-blip/ai_dev_core
 
 スクリプト内容：
 
-1. Set-Content または Add-Content でファイル全文を書く（省略禁止）
+1. Set-Content または Add-Content でファイル全文を書く（# CODE_TRUNCATED禁止）
 2. 変更したファイルだけ git add する
 3. 意味のある git commit（Conventional Commits）を行う
 
 禁止事項：
 - コードの分断
-- コードの省略（省略記号を含むあらゆる省略）
+- コードの# CODE_TRUNCATED（# CODE_TRUNCATED記号を含むあらゆる# CODE_TRUNCATED）
 - 未編集ファイルの git add
 - git push を書くこと（push は人間が行う）
 

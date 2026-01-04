@@ -9,5 +9,5 @@ Remove-Item $LogFile -ErrorAction SilentlyContinue
 
 Set-Location $Backend
 Write-Host "✅ CWD = $Backend" -ForegroundColor Green
-Write-Host "✅ Uvicorn 起動（ログ保存）..." -ForegroundColor Green
+Write-Host "✅ Uvicorn 起動（ログ保存）# CODE_TRUNCATED" -ForegroundColor Green
 & $PyExe -m uvicorn main:app --reload *>&1 | Tee-Object -FilePath $LogFile

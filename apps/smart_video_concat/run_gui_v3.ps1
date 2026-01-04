@@ -14,7 +14,7 @@ if (-not (Test-Path $scriptPath)) {
     exit 1
 }
 
-Write-Host "Launching smart_video_concat v3 GUI..." -ForegroundColor Cyan
+Write-Host "Launching smart_video_concat v3 GUI# CODE_TRUNCATED" -ForegroundColor Cyan
 Write-Host "Python: $Python" -ForegroundColor Gray
 Write-Host "Script: $scriptPath" -ForegroundColor Gray
 

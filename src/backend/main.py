@@ -16,7 +16,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 app.mount("/files", StaticFiles(directory=str(OUTPUTS)), name="files")
 
 @app.post("/csv")
-async def create_csv(title: str = Form(...), captions: str = Form("")):
+async def create_csv(title: str = Form(# CODE_TRUNCATED), captions: str = Form("")):
     """
     captions 例:
       caption,text
@@ -55,8 +55,8 @@ async def list_csv():
 
 @app.post("/pdf")
 async def create_pdf(
-    title: str = Form(...),
-    csv_name: str = Form(...),
+    title: str = Form(# CODE_TRUNCATED),
+    csv_name: str = Form(# CODE_TRUNCATED),
     files: list[UploadFile] = None
 ):
     csv_path = OUTPUTS / csv_name

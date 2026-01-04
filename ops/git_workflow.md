@@ -50,7 +50,7 @@ git commit -m "feat: add login function to core.js"
 
 - push を含めない
 - 他のファイルを同時に add しない
-- コード省略禁止（…や省略）
+- コード# CODE_TRUNCATED禁止（# CODE_TRUNCATEDや# CODE_TRUNCATED）
 - コメントだけ出すの禁止
 - ファイル操作と Git を分離するの禁止
 - 不明点の推測・捏造禁止

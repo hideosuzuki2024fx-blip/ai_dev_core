@@ -1,0 +1,43 @@
+system_manifest:
+  version: 1.0.0
+  project_name: Yoshio-Optimized NoteGenerator
+  description: >
+    発酵型ノートを自動生成し、構成(Amy)・論理(Ayase)・永続化(Ponta)
+    の三者合議によってDraft→Review→Finalを管理するシステム。
+  directory_structure:
+    NoteMD:
+      - 0_raw
+      - 1_mash
+      - 2_ferment
+      - 3_article
+    logs:
+      - critique
+      - error
+    meta:
+      - persona
+  governance:
+    triad:
+      Amy: "構成・段組・見出し設計"
+      Ayase: "論理・整合性・批評統合"
+      Ponta: "永続化・Git commit・再現性確保"
+    principle:
+      - 再現性
+      - エラー透明性
+      - 批評内在化
+      - 発酵型生成
+      - 双方向ガバナンス
+  process:
+    stages: [Draft, Review, Final]
+    note_pipeline: "0_raw → 1_mash → 2_ferment → 3_article"
+  git_policy:
+    base_dir: "E:\\ai_dev_core"
+    encoding: "UTF-8 (no BOM, LF)"
+    attributes_file: ".gitattributes"
+    commit_message_format: "[{stage}] {summary}"
+    normalization_scripts:
+      - "scripts/convert_personas_to_utf8.ps1"
+      - "scripts/convert_personas_to_utf8.sh"
+  recovery:
+    instruction: >
+      チャットがリセットされた場合は、このSYSTEM_MANIFEST.yamlを
+      冒頭に貼ることで状態を完全復元できます。

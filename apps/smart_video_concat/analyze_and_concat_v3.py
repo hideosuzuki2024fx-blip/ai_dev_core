@@ -113,7 +113,7 @@ def main():
     parser.add_argument(
         "inputs",
         nargs="*",
-        help="入力動画ファイル（省略時は --input-dir と --pattern を使用）。",
+        help="入力動画ファイル（# CODE_TRUNCATED時は --input-dir と --pattern を使用）。",
     )
     parser.add_argument(
         "--input-dir",

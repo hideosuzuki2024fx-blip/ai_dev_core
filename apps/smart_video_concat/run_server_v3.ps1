@@ -19,7 +19,7 @@ if ($Debug) {
     $pythonArgs += "--debug"
 }
 
-Write-Host "Starting smart_video_concat v3 server on http://$ListenHost`:$Port ..." -ForegroundColor Cyan
+Write-Host "Starting smart_video_concat v3 server on http://$ListenHost`:$Port # CODE_TRUNCATED" -ForegroundColor Cyan
 Write-Host "Ctrl+C でサーバを停止できます。" -ForegroundColor Yellow
 
 python @pythonArgs

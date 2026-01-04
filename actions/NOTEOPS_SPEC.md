@@ -12,7 +12,7 @@
 ## Token認証（推奨）
 - 環境変数 NOTEOPS_TOKEN を設定した場合、書き込み系APIは
   X-NoteOps-Token: <NOTEOPS_TOKEN> が一致しないと **401**。
-- NOTEOPS_TOKEN が空の場合はローカル開発モードとして認証を省略（運用では禁止推奨）。
+- NOTEOPS_TOKEN が空の場合はローカル開発モードとして認証を# CODE_TRUNCATED（運用では禁止推奨）。
 
 ## ガバナンス（commit）
 - /git/commit は Amy+Ayase 合意（両方 true）+ decision_ref（logs/critique配下の既存ファイル）必須。

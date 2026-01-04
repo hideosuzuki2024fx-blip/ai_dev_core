@@ -70,8 +70,8 @@ Get-ChildItem -Recurse -Name > project_tree.txt
 全回答は次形式：
 ```
 ✅ 結論
-…要点…
+# CODE_TRUNCATED要点# CODE_TRUNCATED
 
 📌 次のアクション（1行）
-…PowerShell コマンドなど…
+# CODE_TRUNCATEDPowerShell コマンドなど# CODE_TRUNCATED
 ```
