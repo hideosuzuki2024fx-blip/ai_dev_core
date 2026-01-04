@@ -44,3 +44,7 @@ logging:
     各発酵サイクルごとに自動生成。成功はcritiqueログ、例外はerrorログに記録。
     ファイル名は ferment_YYYYMMDD_HHMMSS.log。
 
+history:
+  last_ferment_log: "E:\ai_dev_core\logs\critique\ferment_20260104_143138.yaml"
+  last_stage: "Final"
+  last_updated: "2026-01-04 14:31:38"
