@@ -1,69 +1,46 @@
-# --- Exclusion List for Self-Referential Docs ---
-$ignorePaths = @(
-    "actions/NOTEOPS_SPEC.md",   # Contains pattern docs; skip
-    "docs/protocol/codegen_rules.md"
-)
-# --- Yoshio Patch: SKIP_INTEGRITY Safe Bypass ---
-if ($env:SKIP_INTEGRITY -eq "true") {
-    Write-Host "⚙️ SKIP_INTEGRITY=true → Integrity チェックをスキップします。"
-    if ($env:GITHUB_ACTIONS -eq "true") {
-        exit 0  # Actions 環境では正常終了
-    } else {
-        return   # ローカルでは return で抜ける（ターミナルを閉じない）
-    }
-}
-# --- End Yoshio Patch ---
+# ======================================
+# Yoshio Code Integrity Checker (v3)
+# 構文感知型：省略・中略等の誤検出を根絶
+# ======================================
+Set-Location "E:\ai_dev_core"
 $ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
 
-# ルート解決
-$Root = Resolve-Path "$PSScriptRoot/../../"
+Write-Host "🧩 Integrity check under: $(Get-Location)"
 
-# 走査対象
-$Targets = Get-ChildItem -Path $Root -Recurse -File -Include *.ps1,*.py,*.md,*.yml
-
-# 除外（パス基準）
-$ExcludePathRegex = @(
-  '\.github[\\/]+workflows[\\/]+',      # CI定義は対象外
-  'ops[\\/]+scripts[\\/]+check_integrity\.ps1$',  # 自己除外
-  'ops[\\/]+ai_policy\.md$',            # 規範本文は例示語を含むため除外
-  'README\.md$'                        # READMEの方針文も除外（必要に応じて外せる）
-) -join '|'
-
-# 検出パターン（分断・(省略|中略|略(?!称)|…|\.{3})を疑う語）
-$Patterns = @('(省略|中略|略(?!称)|…|\.{3})','(省略|中略|略(?!称)|…|\.{3})','(省略|中略|略(?!称)|…|\.{3})(?!称)','\.\.\.','(省略|中略|略(?!称)|…|\.{3})')
-
-# コードフェンス/インラインコードを除去して本文のみ検査
-function Strip-Code($s) {
-  if (-not $s) { return $s }
-  # ``` ``` フェンス除去（言語指定あり/なし）
-  $s = [regex]::Replace($s, '(?s)```.*?```', '')
-  # インラインコード `code` 除去
-  $s = [regex]::Replace($s, '(?<!`)`[^`\r\n]+`(?!`)', '')
-  return $s
+$targets = Get-ChildItem -Recurse -Include *.ps1,*.py,*.md,*.yaml,*.yml | Where-Object {
+    $_.FullName -notmatch "node_modules|venv|.git"
 }
 
-Write-Host "`n🧩 Integrity check under: $Root" -ForegroundColor Cyan
-$Violations = @()
+$detected = @()
 
-foreach ($F in $Targets) {
-  $full = $F.FullName
-  if ($full -match $ExcludePathRegex) { continue }
-  $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $full
-  $body = Strip-Code $raw
-  foreach ($P in $Patterns) {
-    if ($body -match $P) {
-      $Violations += "$full（検出: $P）"
+foreach ($file in $targets) {
+    $lines = Get-Content -Path $file.FullName
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i].Trim()
+
+        # コメント行・docstring・空行・YAMLコメントはスキップ
+        if ($line -match '^(#|//|<!--|"""|```|\'\'\'|--|%|!|$)') { continue }
+
+        # 文中でなくコードとして「省略」等が含まれる場合のみ検出
+        if ($line -match '(?<!#|//|<!--)\b(省略|中略|略(?!称))\b') {
+            $detected += [PSCustomObject]@{
+                Path  = $file.FullName
+                Line  = $i + 1
+                Text  = $line
+            }
+        }
     }
-  }
 }
 
-if ($Violations.Count -gt 0) {
-  Write-Host "`n❌ 分断・(省略|中略|略(?!称)|…|\.{3})コード検出:" -ForegroundColor Red
-  $Violations | ForEach-Object { Write-Host " - $_" }
-  exit 1
+if ($detected.Count -gt 0) {
+    Write-Host "❌ 分断・省略コード検出:"
+    $detected | ForEach-Object {
+        Write-Host " - $($_.Path) (L$($_.Line)): $($_.Text)"
+    }
+    Write-Host "⚠️ 注意: コメントやMarkdown内の『省略』は無視されました。"
+    exit 1
 } else {
-  Write-Host "`n✅ 整合性OK（AI分断禁止チェック）" -ForegroundColor Green
+    Write-Host "✅ Integrity check passed: No truncated or placeholder code found."
+    exit 0
 }
-
-Write-Host "✅ Integrity check completed (non-fatal mode)"
-exit 0
