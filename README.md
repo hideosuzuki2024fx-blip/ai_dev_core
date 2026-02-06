@@ -143,3 +143,18 @@ Actions から NoteOps を利用するには、以下のいずれかが必要。
 - GET /debug/repo → OK
 - POST /log/append → OK
 
+---
+
+## 12. Repository Organization Notes
+- `docs/`: 仕様・設計・運用ドキュメント群
+- `rules/`: 運用ルールの整理ファイル（`rules/chat_behavior.md`, `rules/url_and_powershell.md`）
+- `ops/`, `scripts/`, `tools/`: 実運用スクリプト
+
+## 13. Change Log
+### 2026-02-06
+- 追跡されていた依存生成物を削除:
+  - `ReWriteMe/backend/.venv/`
+  - `ReWriteMe/frontend/node_modules/`
+  - `video_editor_ui/node_modules/`
+- `.gitignore` を拡張し、`**/node_modules/`, `**/.venv/`, `.next/`, `dist/` などを除外。
+- `rules/` ディレクトリを追加し、ルール参照を README から追跡しやすい構成に整理。
